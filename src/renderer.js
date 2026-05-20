@@ -199,7 +199,11 @@ export function draw(ctx, state, tile, opts = {}) {
   }
 
   // ── units ─────────────────────────────────────────────────────────────────
-  for (const u of state.units) {
+  // Painter's algorithm: draw farther units first so closer-to-camera ones
+  // (lower world y, which maps to LARGER screen y under sy()) paint on top.
+  // Sort a copy so we don't mutate the sim's unit array.
+  const unitsByDepth = [...state.units].sort((a, b) => b.y - a.y);
+  for (const u of unitsByDepth) {
     if (u.card === 'Knight') {
       const p = getAnim(u, dtReal, findTarget(u.targetId));
       markKnight(u.id);
