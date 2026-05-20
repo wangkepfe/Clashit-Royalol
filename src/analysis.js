@@ -188,7 +188,7 @@ const ts = (t) => `${String(t.toFixed(1)).padStart(6)}s`;
 
 export function formatTrace(state) {
   const L = [];
-  L.push(`# Conflict Royale trace — seed ${state.seed}`);
+  L.push(`# Clashit Royalol trace — seed ${state.seed}`);
   L.push(`# Player A = P0, Player B = P1. Unit IDs: <Card>_<A|B>_<n>.`);
   L.push(`# result: ${state.result.winner === 'draw' ? 'DRAW' : 'P' + state.result.winner + ' wins'} (${state.result.reason}), crowns ${state.result.crowns.join('-')}, ${Math.round(state.result.time)}s`);
   L.push('');

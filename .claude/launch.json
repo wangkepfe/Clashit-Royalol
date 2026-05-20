@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "conflict-royale",
+      "name": "clashit-royalol",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["--yes", "serve", "."],
       "port": 8080,

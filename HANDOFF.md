@@ -1,4 +1,4 @@
-# Conflict Royale — Engineering Handoff
+# Clashit Royalol — Engineering Handoff
 
 Read [`DESIGN.md`](DESIGN.md) first for game rules, arena geometry, the card table
 (real Clash Royale Level 11 data), and the bot/view API. This document is the

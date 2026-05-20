@@ -1,4 +1,4 @@
-# Conflict Royale — Design Document
+# Clashit Royalol — Design Document
 
 A web-based, **code-played** Clash Royale knock-off. No human plays the game with a mouse — two
 scripts (bots) play it. The point of the project is to let a coding agent write and iteratively
