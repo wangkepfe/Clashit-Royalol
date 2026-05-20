@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node tools/arena.js rush idle 50)",
+      "Bash(node tools/arena.js defender rush 50)",
+      "Bash(node tools/arena.js random idle 30)",
+      "Bash(node -e \"import\\('./src/match.js'\\).then\\(async m=>{const a=\\(await import\\('./bots/defender.js'\\)\\).default;const b=\\(await import\\('./bots/rush.js'\\)\\).default;const r1=m.runHeadless\\(a,b,12345\\);const r2=m.runHeadless\\(a,b,12345\\);const r3=m.runHeadless\\(a,b,12346\\);console.log\\('seed 12345 run1:',JSON.stringify\\(r1\\)\\);console.log\\('seed 12345 run2:',JSON.stringify\\(r2\\)\\);console.log\\('seed 12346 run3:',JSON.stringify\\(r3\\)\\);console.log\\('DETERMINISTIC \\(run1==run2\\):',JSON.stringify\\(r1\\)===JSON.stringify\\(r2\\)\\);console.log\\('SEED MATTERS \\(run1!=run3\\):',JSON.stringify\\(r1\\)!==JSON.stringify\\(r3\\)\\);}\\)\")",
+      "Bash(node -e ' *)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

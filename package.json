@@ -1,0 +1,14 @@
+{
+  "name": "conflict-royale",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A code-played Clash Royale knock-off. Scripts play; you watch.",
+  "scripts": {
+    "arena": "node tools/arena.js",
+    "serve": "npx --yes serve -l 8080 ."
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Conflict Royale — code-played</title>
+<style>
+  :root { --bg:#0d141d; --panel:#161f2b; --line:#2a3a4b; --p0:#46b1ff; --p1:#ff6b66;
+          --txt:#eef4fa; --mut:#8499ad; --elix:#c46be8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:13px/1.45 ui-monospace,Menlo,Consolas,monospace; }
+  .wrap { display:flex; gap:14px; padding:14px; align-items:flex-start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:12px; }
+  h1 { font-size:17px; margin:0; }
+  .sub { color:var(--mut); font-size:11px; margin:2px 0 12px; }
+  canvas { background:#22344a; border-radius:6px; display:block; }
+  label { display:block; color:var(--mut); font-size:10px; margin:9px 0 3px;
+          text-transform:uppercase; letter-spacing:.5px; }
+  select, input, button { background:#0d141d; color:var(--txt); border:1px solid var(--line);
+          border-radius:5px; padding:6px 8px; font:inherit; width:100%; }
+  button { cursor:pointer; background:#1f3247; }
+  button:hover { background:#27425e; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  .controls { width:210px; } .hud { width:250px; }
+  .tag { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; font-weight:bold; }
+  .t0 { background:rgba(70,177,255,.2); color:var(--p0); }
+  .t1 { background:rgba(255,107,102,.2); color:var(--p1); }
+
+  .clock { font-size:30px; text-align:center; font-weight:bold; }
+  .phase { text-align:center; color:var(--mut); font-size:12px; margin-bottom:8px; }
+  .phase.ot { color:var(--elix); font-weight:bold; }
+
+  .score { display:flex; align-items:center; justify-content:space-between; margin:6px 0; }
+  .towers { display:flex; gap:4px; }
+  .tw { width:14px; height:14px; border-radius:3px; border:1px solid var(--line); }
+  .tw.k { width:18px; }
+  .tw.a0 { background:var(--p0); } .tw.a1 { background:var(--p1); }
+  .tw.dead { background:#33404d; }
+  .crown { font-size:20px; font-weight:bold; min-width:22px; text-align:center; }
+
+  .pips { display:flex; gap:3px; margin:3px 0 7px; }
+  .pip { flex:1; height:11px; border-radius:2px; background:#0d141d;
+         border:1px solid var(--line); overflow:hidden; }
+  .pip > i { display:block; height:100%; background:var(--elix); }
+  .ecount { color:var(--elix); font-weight:bold; }
+
+  .cards { display:flex; gap:4px; }
+  .card { flex:1; background:#0d141d; border:1px solid var(--line); border-radius:5px;
+          padding:5px 2px; text-align:center; font-size:10px; position:relative; }
+  .card.next { opacity:.5; }
+  .card.just { border-color:#ffd166; box-shadow:0 0 6px #ffd16677; }
+  .card .c { color:#ffd166; font-weight:bold; }
+
+  .feed { height:230px; overflow-y:auto; background:#0d141d; border:1px solid var(--line);
+          border-radius:6px; padding:6px; font-size:11px; }
+  .feed div { padding:1px 0; border-bottom:1px solid #1b2735; white-space:nowrap; }
+  .f0 { color:var(--p0); } .f1 { color:var(--p1); }
+  .fx { color:#ffd166; } .fmut { color:var(--mut); }
+
+  .legend { font-size:11px; }
+  .legend .lg { display:flex; align-items:center; gap:6px; padding:2px 0; color:var(--mut); }
+  .legend b { color:var(--txt); width:22px; display:inline-block; }
+  .chk { display:flex; align-items:center; gap:6px; color:var(--mut); font-size:11px; margin-top:8px; }
+  .chk input { width:auto; }
+  #winner { text-align:center; font-size:15px; min-height:20px; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="panel controls">
+    <h1>Conflict Royale</h1>
+    <div class="sub">Scripts play. You watch.</div>
+
+    <label>Player 0 <span class="tag t0">bottom</span></label>
+    <select id="bot0"></select>
+    <label>Player 1 <span class="tag t1">top</span></label>
+    <select id="bot1"></select>
+    <label>Seed</label>
+    <input id="seed" type="number" value="1" />
+    <label>Speed</label>
+    <select id="speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+      <option value="16">16×</option>
+      <option value="60">Max</option>
+    </select>
+    <label>&nbsp;</label>
+    <div class="row"><button id="play">▶ Play</button><button id="step">⏭ Step</button></div>
+    <label>&nbsp;</label>
+    <button id="restart">↻ Restart</button>
+    <label class="chk"><input type="checkbox" id="tgt" /> show targeting lines</label>
+    <div id="winner"></div>
+
+    <label>Legend</label>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="panel"><canvas id="cv"></canvas></div>
+
+  <div class="panel hud">
+    <div class="clock" id="clock">2:00</div>
+    <div class="phase" id="phase">regulation</div>
+
+    <div class="score">
+      <span class="tag t1" id="name1">P1</span>
+      <div class="towers" id="tw1"></div>
+      <span class="crown" id="cr1">0</span>
+    </div>
+    <div class="pips" id="pips1"></div>
+    <div class="cards" id="hand1"></div>
+
+    <div style="height:1px;background:var(--line);margin:12px 0"></div>
+
+    <div class="cards" id="hand0"></div>
+    <div class="pips" id="pips0"></div>
+    <div class="score">
+      <span class="tag t0" id="name0">P0</span>
+      <div class="towers" id="tw0"></div>
+      <span class="crown" id="cr0">0</span>
+    </div>
+
+    <label>Event feed</label>
+    <div class="feed" id="feed"></div>
+  </div>
+
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
