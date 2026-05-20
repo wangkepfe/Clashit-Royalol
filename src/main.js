@@ -20,8 +20,8 @@ const names = Object.keys(BOTS);
 for (const sel of [$('bot0'), $('bot1')]) {
   sel.innerHTML = names.map((n) => `<option>${n}</option>`).join('');
 }
-$('bot0').value = names.includes('smart') ? 'smart' : names[0];
-$('bot1').value = names.includes('champion') ? 'champion' : names[0];
+$('bot0').value = names[0];
+$('bot1').value = names[0];
 
 // Legend
 $('legend').innerHTML = legendData()
