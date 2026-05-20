@@ -1,12 +1,27 @@
-// smart v17 — PROMOTED over v16 at 64.5% / 200 (robust 57–64.5% across 4 seed
-// ranges; vs idle 100%, defender 97.5%, rush 95%). v17 = v16 + ONE change:
-// the Giant deploys FORWARD at the bridge (max legal y), not deep in the back.
-// Measured root cause of the still-unconnecting v16 mirror (seed 7 trace): a
-// Giant dropped at y=12 walks ~13 tiles ALONE for ~15 s and a lone enemy
-// Musketeer + tower grind it to death 3 tiles short of the tower for 0 damage
-// (the elixir gap after the 5-cost Giant means support never catches up). At
-// the bridge it reaches the tower far sooner, before the enemy stacks a wall:
-// towerDmg 2616→3137, W104→W129/200.
+// smart v18 — beats v17 at 71.7%/2400 (8 disjoint seed bands, all ≥69%).
+// v18 = v17 + six measured layered tweaks (each kept iff it cleared the noise
+// floor on the same 5-seed harness; reverted otherwise — see tools/eval.js):
+//   1. defender deploys CLOSER to the princess (toward * 1.5 not 2.5) — they
+//      meet the push later so the tower co-tanks more hits. (+3.4pp)
+//   2. backY moved from mid-4 to mid-2.5 — Musketeer/Archers support catches
+//      up to the bridge-deployed Giant ~5 tiles sooner. (+4.2pp)
+//   3. giantY pushed from mid-1 to mid-0.5 — the absolute most forward legal
+//      deploy, one more tile of progress per Giant. (+0.8pp)
+//   4. Arrows triggers on `n>=2 && val>=500` (in addition to the old n>=3
+//      gate). Catches an Archer pair (608 hp): 3-for-3 elixir wash that
+//      removes the opponent's main ranged DPS during my push. (+8.5pp)
+//   5. Fireball threshold val>=850 → val>=700 — catches solo Musketeer (721
+//      hp): even-elixir trade but removes their main DPS unit. (+2.9pp)
+//   6. default lane picks the LESS-defended side (lowest enemy hp on their
+//      half), then damagedP/lane-lock override as before. Lane lock now
+//      engages on the first damaged princess, not the first kill. (+1.6pp)
+//   7. split-raid commits at E>=7 (was 8). (+0.8pp)
+// Tried-and-rejected with this stack: ranged-aware tank defense, Knight as
+// counter-push tank, deploy x at lane center, even closer support stagger,
+// Minions in support, behind-on-crowns aggressive spelling.
+//
+// Inherited from v17: Giant deploys forward at the bridge (root cause from
+// the v16 trace — back-line Giants walked alone and died 3 tiles short).
 //
 // v16 — PROMOTED over v10 at 59.5%/200. Keeps v10's measured-good spell (§1)
 // core and reworked defense+offense to break the coin-flip mirror (seed 7
@@ -124,7 +139,7 @@ export default function smart(v) {
   const lowEnP = enPrincess.filter((t) => t.hp > 0).sort((a, b) => a.hp - b.hp)[0];
   if (has('Fireball')) {
     const c = spellClump(v.cards.Fireball.radius, 'Fireball');
-    if (c && (c.val >= 850 || c.n >= 3)) {
+    if (c && (c.val >= 700 || c.n >= 3)) {
       const a = aimWithTower(c, v.cards.Fireball.radius);
       return { card: 'Fireball', x: a.x, y: a.y };
     }
@@ -134,7 +149,7 @@ export default function smart(v) {
   }
   if (has('Arrows')) {
     const c = spellClump(v.cards.Arrows.radius, 'Arrows');
-    if (c && c.n >= 3 && c.val >= 480) {
+    if (c && ((c.n >= 3 && c.val >= 480) || (c.n >= 2 && c.val >= 500))) {
       const a = aimWithTower(c, v.cards.Arrows.radius);
       return { card: 'Arrows', x: a.x, y: a.y };
     }
@@ -176,7 +191,7 @@ export default function smart(v) {
       if (anyAir) order = ['Musketeer', 'Archers', 'Minions'];
       else if (tank) order = ['Goblins', 'Knight', 'Musketeer', 'Archers']; // swarm + dps
       else order = ['Knight', 'Goblins', 'Musketeer', 'Archers'];
-      for (const c of order) if (has(c)) return troop(c, lead.x, side, baseY + toward * 2.5);
+      for (const c of order) if (has(c)) return troop(c, lead.x, side, baseY + toward * 1.5);
       // Can't answer with a synergy troop. Holding is fine while poor, but
       // holding a Giant/spell-only hand while CAPPED both leaks elixir AND
       // doesn't defend (measured seed 2: P1 leaked 12.8 this way). When near
@@ -192,19 +207,27 @@ export default function smart(v) {
 
   // ── 3. Offense — concentrated, SUPPORTED Giant beatdown + counter-push ────
   const aliveEnP = enPrincess.filter((t) => t.hp > 0);
-  let targetSide = 'right'; // default opposite the champion's left-default
+  // Default to the less-defended lane (fewer enemy units on their half).
+  // Ties go to right (opposite the champion's left default).
+  let leftDef = 0, rightDef = 0;
+  for (const u of enemies) {
+    if (me.id === 0 ? u.y >= mid : u.y <= mid) {
+      if (sideOf(u.x) === 'left') leftDef += u.maxHp; else rightDef += u.maxHp;
+    }
+  }
+  let targetSide = leftDef < rightDef ? 'left' : 'right';
   const damagedP = aliveEnP.filter((t) => t.hp < t.maxHp).sort((a, b) => a.hp - b.hp);
   if (damagedP.length) targetSide = damagedP[0].side; // finish what's already hurt
   else if (aliveEnP.length && !aliveEnP.some((t) => t.side === 'right'))
     targetSide = aliveEnP[0].side; // right princess gone -> commit left
   const pushX = aliveEnP.length === 0 ? W / 2 : laneXof(targetSide);
-  const backY = me.id === 0 ? mid - 4 : mid + 4;
+  const backY = me.id === 0 ? mid - 2.5 : mid + 2.5;
   // Giants deploy FORWARD at the bridge (max legal y), not deep back. Measured
   // root cause of the non-connecting mirror (seed 7): a Giant dropped at y=12
   // walks ~13 tiles alone for ~15 s and a single Musketeer+tower grind it to
   // death 3 tiles short of the tower, 0 damage dealt. At the bridge it reaches
   // the tower far sooner with less exposure and before the enemy stacks a wall.
-  const giantY = me.id === 0 ? mid - 1 : mid + 1;
+  const giantY = me.id === 0 ? mid - 0.5 : mid + 0.5;
 
   const myGiant = mine.find((u) => u.card === 'Giant');
   const advanced = mine
@@ -222,7 +245,7 @@ export default function smart(v) {
   // Once one enemy princess is dead, the lane is LOCKED to the survivor —
   // never let a stray advanced unit drag the Giant back to the dead lane
   // (measured seed 7: post-trade Giants alternated lanes and never connected).
-  const laneLocked = aliveEnP.length <= 1;
+  const laneLocked = aliveEnP.length <= 1 || damagedP.length > 0;
   if (!myGiant && has('Giant')) {
     const escortReady = haveSupport && E >= 8;
     const cpUnit = advanced[0];
@@ -255,7 +278,7 @@ export default function smart(v) {
   // elixir left (E≥8) to not starve that main push.
   const mainPush = myGiant || advanced.length >= 1;
   const raidP = enPrincess.find((t) => t.hp > 0 && t.side !== targetSide);
-  if (mainPush && raidP && E >= 8) {
+  if (mainPush && raidP && E >= 7) {
     const rSide = raidP.side;
     const guards = enemies.filter(
       (u) => sideOf(u.x) === rSide && (me.id === 0 ? u.y < mid + 2 : u.y > mid - 2)
