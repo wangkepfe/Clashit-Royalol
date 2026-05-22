@@ -1,28 +1,28 @@
-// Claude_Opus_4_7 — Built on top of `smart` (the prior champion).
+// Claude_Opus_4_7 — the current adaptive play script for Clashit Royalol.
 //
-// Result: 53.1% / 2000 games vs smart across 10 disjoint seed bands, all but
-// one ≥50% (the floor was 48% — a real outlier, not a measurement glitch).
-// p < 0.01 on the binomial test, so the edge is real. Stays at 64–68% against
-// smart_v18, matching smart's baseline against the prior generation.
+// Iterated from the prior-generation in-repo baseline; measured +3.1pp on
+// the same mirror harness (53.1% / 2000 games, p < 0.01 binomial). Stays at
+// 64–68% against the prior-prior generation (the v18 line), so the new
+// levers don't trade away the existing dominance over weaker bots.
 //
-// The mirror against smart is a near-equilibrium — every micro-lever I tried
-// in isolation landed in the noise band, so the edge here comes from FIVE
-// small structural changes that each move the same fight a half-step in my
-// favor. None is a knockout on its own; the value is in the stack.
+// The same-generation mirror is a near-equilibrium — every micro-lever I
+// tried in isolation landed in the noise band, so the edge here comes from
+// SIX small structural changes that each move the same fight a half-step
+// in my favor. None is a knockout on its own; the value is in the stack.
 //
-//   1. **Forward proactive Cannon** at (W/2, mid-1.5) instead of (W/2, mid-2.5).
+//   1. **Forward proactive Cannon** at (W/2, mid-1.5) instead of mid-2.5.
 //      Math: a lane-deployed Giant at (14.5, 16.5) is at distance
 //      sqrt(5.5² + 2²) = 5.85 < Giant.sight 6.0 ⇒ the Cannon enters the
 //      Giant's sight at deploy, locking IMMEDIATELY instead of waiting for
 //      the Giant to walk 1.5 south. Two extra seconds of Cannon kiting per
-//      Giant push smart's mid-2.5 placement misses.
+//      Giant push that the back-of-center placement misses.
 //
-//   2. **Arrows-before-Fireball for swarm clears**. Smart's Fireball
-//      triggers on `n≥3 || val≥700`, which catches 4-Goblin clumps with
-//      Fireball (688 dmg / 4 elixir) when Arrows (366 dmg / 3 elixir) would
-//      one-shot every Goblin (202 hp). Now: try Arrows first if the clump's
-//      maxHp ≤ Arrows.dmg — saves 1 elixir per Goblin-defense Fireball.
-//      Fireball still owns the Musketeer-in-clump case (max hp 721).
+//   2. **Arrows-before-Fireball for swarm clears**. The prior Fireball gate
+//      `n≥3 || val≥700` catches 4-Goblin clumps with Fireball (688 dmg /
+//      4 elixir) when Arrows (366 dmg / 3 elixir) would one-shot every
+//      Goblin (202 hp). Now: try Arrows first if the clump's maxHp ≤
+//      Arrows.dmg — saves 1 elixir per Goblin-defense Fireball. Fireball
+//      still owns the Musketeer-in-clump case (max hp 721 > Arrows.dmg).
 //
 //   3. **Closer support stagger** — escort drops 1.5 tiles behind the Giant
 //      (was 2.5). The Musketeer enters tower-attack-range ~1 s sooner, so
@@ -39,7 +39,7 @@
 //      Giant+escort gate to E≥7 (was 8). Commits Giants ~1.4 s sooner when
 //      I need to recover the lead; harmless when ahead/tied (gate inactive).
 //      Combined with #6 it produces more frequent pushes in losing positions
-//      where smart would still be hoarding.
+//      where the prior bot would still be hoarding.
 //
 //   6. **Lower Knight (E≥6) / Goblins (E≥7) support gates** behind a live
 //      Giant — Knight 3 cost / Goblins 2 cost, so the new thresholds keep a
@@ -47,7 +47,7 @@
 //      lands ~1 elixir-tick sooner per push.
 //
 // MEASURED DEAD ENDS (do not reintroduce blindly — each one was tested in
-// isolation against smart over ≥600 games):
+// isolation over ≥600 games on the same mirror harness):
 //   * Goblins as initial Giant escort — Goblins (speed 2.0) outrun the slow
 //     Giant (0.75) and die alone to defenders. -3.3pp.
 //   * Forward defensive Cannon for in-flight Giant (mid-1.5 reactive) —
@@ -58,13 +58,13 @@
 //     means my early Cannon expires unused or eats my own elixir budget.
 //     Symmetric mirror trade — 50% on average. ≥8 is the sweet spot.
 //   * Opening Goblins rush at the bridge — variance-positive but noise on
-//     the mean; smart's defense answers cleanly and the elixir cost balances.
+//     the mean; the opponent's defense answers cleanly, elixir balances out.
 //   * Asymmetric lane tiebreak (left vs right) — symmetric mirror,
 //     mirror-of-mirror = same outcome. 49–50%.
 //   * Hand-aware weakDefense push (opp lacks Cannon+Goblins+Knight) — opp
 //     cycles a defender into hand by the time my Giant arrives. ~49%.
-//   * Fireball tower-chip at E≥10 — already covered by smart's closing
-//     spell logic; no marginal gain. Pure noise.
+//   * Fireball tower-chip at E≥10 — already covered by the closing-spell
+//     branch (§1); no marginal gain. Pure noise.
 import { dist, myUnits, enemyUnits, myTowers, enemyTowers } from './lib.js';
 
 export default function ClaudeOpus47(v) {
@@ -228,7 +228,7 @@ export default function ClaudeOpus47(v) {
     has('Cannon') && !hasMyCannon &&
     threat.length === 0 && E >= 6
   ) {
-    // Forward by 1 tile (mid-1.5 vs smart's mid-2.5): a lane-deployed Giant at
+    // Forward by 1 tile (mid-1.5 vs the prior champion's mid-2.5): a lane-deployed Giant at
     // (14.5, 16.5) is at distance sqrt(5.5² + 2²) = 5.85 < Giant.sight 6.0 ⇒
     // Cannon enters Giant's sight at deploy, locking immediately instead of
     // waiting for the Giant to walk south. Two extra seconds of kiting.

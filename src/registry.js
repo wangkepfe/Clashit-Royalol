@@ -1,6 +1,7 @@
-// Bots selectable in the browser viewer. Only one bot lives in the repo:
-// `smart` — the adaptive script that picks the best move per situation.
-// Both player slots default to it, so the viewer runs a smart-vs-smart mirror.
-import smart from '../bots/smart.js';
+// Bots selectable in the browser viewer. The repo ships exactly one bot —
+// Claude_Opus_4_7, the current adaptive play script. Both player slots
+// default to it, so the viewer runs a Claude_Opus_4_7 vs Claude_Opus_4_7
+// mirror by default.
+import Claude_Opus_4_7 from '../bots/Claude_Opus_4_7.js';
 
-export const BOTS = { smart };
+export const BOTS = { Claude_Opus_4_7 };
