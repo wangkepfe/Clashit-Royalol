@@ -26,6 +26,12 @@ export const CONFIG = {
   deployTime: 1.0, // seconds a new troop is frozen
   towerTargetRadius: 1.4, // collision radius used when attacking a tower
 
+  // Real CR: spells land at a fixed ~1.0 s after cast, regardless of where on
+  // the map. Engine normalizes the spell projectile's speed at cast time so
+  // travel duration is exactly this many seconds (no more 2-3 s far-spell
+  // travel from the caster's King tower).
+  spellCastDelay: 1.0,
+
   // Crown towers fire arrows (real TowerPrincessProjectile Speed 600 ÷ 60).
   towerProjectileSpeed: 600 / 60, // tiles/second
 

@@ -183,6 +183,7 @@ export function deployCard(state, owner, cardName, x, y, applyDamage) {
       cooldown: 0,
       deployTimer: state.config.deployTime,
       targetId: null,
+      _aggroLocked: false,       // engine: target-lock state (set true on in-sight aggro)
       // Building-only fields:
       _building: true,           // engine flag: canHit shortcut + skip movement
       lifetime: def.lifetime,    // self-destruct timer (seconds)
@@ -218,6 +219,7 @@ export function deployCard(state, owner, cardName, x, y, applyDamage) {
       cooldown: 0,
       deployTimer: state.config.deployTime,
       targetId: null,
+      _aggroLocked: false,       // engine: target-lock state (set true on in-sight aggro)
     });
   }
 }

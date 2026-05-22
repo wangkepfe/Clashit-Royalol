@@ -250,8 +250,11 @@ function tryDeploy(state, owner, action) {
   }
 
   if (def.kind === 'spell') {
-    // Spell is thrown from the caster's King tower and travels to the aim
-    // point — AoE applies on arrival (see updateProjectiles).
+    // Spell launches from the caster's King tower and lands at the aim point
+    // after a FIXED delay (real CR behavior: ~1.0 s cast-to-land regardless of
+    // distance). We normalize the projectile's speed at cast so travel time =
+    // SPELL_DELAY exactly — this keeps the existing King-origin visual but
+    // makes far spells viable instead of taking 2-3 s to arrive.
     let logEv = null;
     if (state.logEnabled) {
       state.stats.spellsCast[owner] += 1;
@@ -261,12 +264,18 @@ function tryDeploy(state, owner, action) {
       logEvent(state, logEv);
     }
     const king = state.towers.find((t) => t.owner === owner && t.kind === 'king');
+    const startX = king ? king.x : x;
+    const startY = king ? king.y : y;
+    const flightDist = Math.hypot(x - startX, y - startY);
+    const normSpeed = flightDist > 0.01
+      ? flightDist / state.config.spellCastDelay
+      : def.projectileSpeed;
     spawnProjectile(state, {
       owner,
       kind: 'spell',
-      x: king ? king.x : x,
-      y: king ? king.y : y,
-      speed: def.projectileSpeed,
+      x: startX,
+      y: startY,
+      speed: normSpeed,
       tx: x,
       ty: y,
       card: cardName,
@@ -304,7 +313,26 @@ function enemyEntities(state, owner) {
   return out;
 }
 
+// Real-CR target lock: once a unit aggros (an enemy enters its sight), the
+// target STICKS until it dies, becomes uncannot-hit, or leaves the leash
+// (sight range). A newly-spawned closer enemy will NOT pull the unit off its
+// current aggro target — this is what makes early defensive-building placement
+// matter (drop the Cannon BEFORE the Giant aggros the tower). Fallback "walk
+// toward nearest tower" is NOT locked: units that haven't aggro'd anything yet
+// keep scanning every tick, so a Cannon dropped while the Giant is still mid-
+// walk *will* pull it.
 function pickGoal(state, u) {
+  // Aggro-locked: keep current target while it's still valid.
+  if (u._aggroLocked && u.targetId != null) {
+    const cur = findEntity(state, u.targetId);
+    if (cur && cur.owner !== u.owner && canHit(u.def, cur) && dist(u, cur) <= u.def.sight) {
+      const reach = u.def.range + entityRadius(cur);
+      return { goal: cur, attack: dist(u, cur) <= reach };
+    }
+    u._aggroLocked = false; // lock broken; fall through to re-acquire
+  }
+
+  // Re-acquire: scan for nearest hittable enemy in sight. If found, LOCK.
   const enemies = enemyEntities(state, u.owner);
   let best = null;
   let bestD = u.def.sight;
@@ -316,9 +344,14 @@ function pickGoal(state, u) {
       best = e;
     }
   }
-  if (best) return { goal: best, attack: true };
+  if (best) {
+    u._aggroLocked = true;
+    return { goal: best, attack: true };
+  }
 
-  // Nothing in sight: march to the nearest enemy tower.
+  // Nothing in sight: march to the nearest enemy tower (NOT locked — keep
+  // scanning each tick so a Cannon dropped in front pulls the unit).
+  u._aggroLocked = false;
   let tower = null;
   let td = Infinity;
   for (const t of state.towers) {

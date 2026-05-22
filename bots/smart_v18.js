@@ -114,15 +114,16 @@ export default function smart(v) {
     return null; // no valid spot found
   }
 
-  // ── 1. Spells — lead the clump by the FIXED cast-to-land time ────────────
-  // Engine normalizes spell travel to a fixed delay (real CR: ~1.0 s after
-  // cast, regardless of distance — see config.spellCastDelay / engine.js
-  // spell branch). So ETA is a constant, not distance-dependent. We predict
-  // each unit's position at impact (it advances at its own speed toward my
-  // nearest tower) and cluster on the predicted spots. Tank hp (>=1500) is
-  // still excluded — spelling a Giant is a bad trade.
-  const SPELL_ETA = 1.0; // keep in sync with src/config.js spellCastDelay
-  const spellEta = () => SPELL_ETA;
+  // ── 1. Spells — lead the clump by the projectile's travel time ───────────
+  // The spell flies from my King tower; by the time it lands (~1–1.5 s) the
+  // enemy has moved. Predict each unit's position at impact (it advances at
+  // its own speed toward my nearest tower) and cluster on the predicted spots.
+  // Tank hp (>=1500) is still excluded — spelling a Giant is a bad trade.
+  const spellEta = (x, y, card) => {
+    const sp = v.cards[card].projectileSpeed;
+    if (!sp || !myKing) return 0;
+    return Math.hypot(x - myKing.x, y - myKing.y) / sp;
+  };
   const predict = (u, t) => {
     let tx = u.x, ty = u.y, bd = 1e9;
     for (const tw of myTw) {
@@ -187,25 +188,6 @@ export default function smart(v) {
     }
   }
 
-  // ── 1b. Proactive center-Cannon vs visible Giant ─────────────────────────
-  // With target lock, a Giant that aggros my Princess tower BEFORE my Cannon
-  // is up will stay locked on the tower. So if opp clearly has Giant in hand
-  // AND can play it immediately (E≥8), drop Cannon at center NOW so it's
-  // fully deployed and visible the moment their Giant crosses the bridge.
-  // Tight gate (no current threat, I'm not poor, no other Cannon up) so we
-  // don't burn 3 elixir on a Cannon that expires unused.
-  const hasMyCannon = mine.some((u) => u.card === 'Cannon' && u.hp > 0);
-  const oppHasGiant = v.enemy.hand.some((h) => h.card === 'Giant');
-  if (
-    oppHasGiant && v.enemy.elixir >= 8 &&
-    has('Cannon') && !hasMyCannon &&
-    threat.length === 0 && E >= 6
-  ) {
-    const centerY = me.id === 0 ? mid - 2.5 : mid + 2.5;
-    const p = safeBuildingTroop('Cannon', W / 2, sideOf(W / 2), centerY);
-    if (p) return p;
-  }
-
   // ── 2. Defend — synergy counter, but DON'T over-invest: counter-attack ───
   // Over-defending is how the mirror is lost. Once behind you are perpetually
   // threatened; if §2 hard-returns on every threat you turtle forever and lose
@@ -235,19 +217,6 @@ export default function smart(v) {
     // reproduces the coin-flip mirror (the !tank-guard variant fell to 40%).
     const contested = defenders.length >= 1 && defDps * 6 >= threatHp;
     if (!contested) {
-      // Vs Giant specifically: prioritize Cannon at CENTER (x ≈ W/2). The
-      // Giant is `buildingsOnly`, sight 6.0 — a Cannon at (9, mid±2.5) is
-      // ~5.8 tiles from either bridge mouth, so it pulls the Giant regardless
-      // of which lane it took. Lane Cannon (lead.x) wastes this mechanic: the
-      // Giant aggros it anyway, but only the same-lane Giant. Center Cannon
-      // doubles as a both-lane Giant magnet. Done BEFORE the synergy order so
-      // it pre-empts a lane-side Cannon when Giant is the actual threat.
-      const giantInThreat = threat.find((u) => u.card === 'Giant');
-      if (giantInThreat && has('Cannon')) {
-        const centerY = me.id === 0 ? mid - 2.5 : mid + 2.5;
-        const p = safeBuildingTroop('Cannon', W / 2, sideOf(W / 2), centerY);
-        if (p) return p;
-      }
       let order;
       // Minions is no longer in the deck (Cannon replaced it); Musketeer +
       // Archers are now the only anti-air answer. Cannon is ground-only so

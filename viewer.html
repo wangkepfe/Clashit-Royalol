@@ -38,10 +38,10 @@
     border-bottom: 1px solid var(--line); padding-bottom: 4px;
   }
 
-  /* Grid layout: 5 rows (states) × 4 columns (views) */
+  /* Grid layout: 5 rows (states) × 2 columns (views) */
   .grid {
     display: grid;
-    grid-template-columns: 90px repeat(4, 1fr);
+    grid-template-columns: 90px repeat(2, 1fr);
     gap: 8px;
     background: var(--panel);
     border: 1px solid var(--line); border-radius: 8px; padding: 12px;
@@ -124,11 +124,11 @@
     <h2>Character — all states × all views</h2>
     <div class="grid" id="characterGrid"></div>
     <div class="legend" style="margin-top:8px">
-      Each cell is animated live. <b>Idle</b> = standing breath, <b>Walking</b> = gait + lean,
+      Each cell is animated live. <b>Idle</b> = standing breath, <b>Walking</b> = gait,
       <b>Attacking</b> = full attack swing on loop with a short rest, <b>Spawning</b> = repeating deploy ring-up,
       <b>Hurt</b> = standing with a periodic hit-flash (also forces <code>hpFrac=0.4</code>).
-      The four <b>views</b> are <code>side</code> with <code>face=+1</code>, <code>side</code> with <code>face=-1</code>,
-      <code>front</code>, and <code>back</code>.
+      Only two <b>views</b> are rendered: <code>front</code> and <code>back</code> — side-profile
+      sprites were removed.
     </div>
   </section>
 

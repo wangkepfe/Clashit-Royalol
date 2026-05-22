@@ -54,11 +54,10 @@ const CHARACTERS = {
 const SWING = 0.30;
 const FLASH = 0.14;
 
-// All 5 states × 4 views shown in the character grid.
+// All 5 states × 2 views shown in the character grid.
+// (Side-profile sprites were dropped — only front and back are rendered.)
 const STATES = ['idle', 'walking', 'attacking', 'spawning', 'hurt'];
 const VIEWS = [
-  { id: 'sideR', view: 'side',  face: +1, label: 'Side ▶' },
-  { id: 'sideL', view: 'side',  face: -1, label: 'Side ◀' },
   { id: 'front', view: 'front', face: +1, label: 'Front' },
   { id: 'back',  view: 'back',  face: +1, label: 'Back' },
 ];
@@ -79,7 +78,7 @@ function buildP({ view, face, state, t, owner, period, phase }) {
   } else if (state === 'walking') {
     moving = 1;
     gait = (t * 1.2) % 1;
-    lean = view === 'side' ? face * 0.18 : 0;
+    lean = 0;
   } else if (state === 'attacking') {
     // ACTIVE phase: atk runs 1 → 0 over SWING.
     // REST  phase: atk = 0 for (period - SWING) so attack is visibly cyclic.

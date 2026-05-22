@@ -6,7 +6,7 @@
 //
 // All animation is DERIVED here (the engine stores no velocity/anim state):
 //   facing/gait  <- frame-to-frame position delta (frame-rate independent)
-//   view         <- horizontal vs vertical movement direction (side/front/back)
+//   view         <- vertical movement direction (front / back)
 //   attack       <- rising edge of u.cooldown (engine sets it to hitSpeed on a swing)
 //   spawn        <- u.deployTimer (troop is frozen 1.0s on deploy)
 //   hit flash    <- per-unit hp delta
@@ -68,10 +68,9 @@ export function getAnim(u, dt, target) {
   a.moving = lerp(a.moving, targetMv, clamp01(dt * 12));
 
   // View pick: which way is the unit facing the camera?
-  //   side   = facing mostly horizontally  -> profile, mirrored by face
   //   front  = facing the camera (game dy < 0, i.e. down the screen)
   //   back   = facing away from the camera (game dy > 0, i.e. up the screen)
-  // Hysteresis (`* 1.15`) avoids view flicker on diagonal vectors.
+  // Side-profile art was dropped — every unit renders as front or back only.
   //
   // Priority for the facing vector:
   //   1) movement (when actually walking)
@@ -83,20 +82,15 @@ export function getAnim(u, dt, target) {
     fx = target.x - u.x; fy = target.y - u.y;
   }
   if (fx !== 0 || fy !== 0) {
-    const afx = Math.abs(fx), afy = Math.abs(fy);
-    if (afx > afy * 1.15) {
-      a.view = 'side';
-      a.face = fx > 0 ? 1 : -1;
-    } else if (afy > afx * 1.15) {
-      a.view = fy > 0 ? 'back' : 'front';
-      a.face = 1;
-    }
+    // Any vertical component picks the view; pure horizontal motion keeps the
+    // last view (or, on first frame, falls back to the owner default below).
+    if (fy !== 0) a.view = fy > 0 ? 'back' : 'front';
+    a.face = 1;
   }
   if (!a.view) a.view = u.owner === 0 ? 'back' : 'front';
 
-  // Lean only applies to the side profile.
-  const leanTarget = a.view === 'side' ? clamp01(a.moving) * a.face * 0.18 : 0;
-  a.lean = lerp(a.lean, leanTarget, clamp01(dt * 10));
+  // No side profile means no body lean.
+  a.lean = 0;
 
   // Attack: engine resets cooldown to hitSpeed on a swing -> rising edge.
   if (u.cooldown > a.lastCd + 1e-6) a.atkT = SWING;
@@ -303,7 +297,7 @@ const NAVY_HI   = '#2a3a66';
 const ORANGE_LO = '#9c6b09';
 
 // Polished 2.5D Knight. (gx,gy) = ground point in screen px (feet anchor).
-// View-aware: dispatches to side / front / back renderers based on p.view.
+// View-aware: dispatches to front / back renderers based on p.view.
 export function drawKnight(ctx, gx, gy, tile, p) {
   // Team palette — P0 = navy, P1 = orange (complementary).
   const team    = p.owner === 0 ? NAVY    : GOLD;
@@ -422,469 +416,7 @@ export function drawKnight(ctx, gx, gy, tile, p) {
     }
   };
 
-  // ── SIDE VIEW ──────────────────────────────────────────────────────────
-  if (p.view === 'side') {
-
-    // Back cape (drawn first so it sits behind everything else).
-    {
-      const tC = (p.t + p.phase) * 4.5;
-      const flutter = (Math.sin(tC) * (0.06 + p.moving * 0.18) +
-                       Math.sin(tC * 1.7) * 0.045) * sc;
-      ctx.save();
-      ctx.translate(-0.18 * sc, shoY + 0.12 * sc);
-      ctx.rotate(0.05 + p.moving * 0.08);
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(-0.58 * sc, 0.55 * sc, -0.20 * sc + flutter, 1.12 * sc);
-      ctx.quadraticCurveTo(0.10 * sc, 1.02 * sc, 0.22 * sc, 0);
-      ctx.closePath();
-      const capeG = ctx.createLinearGradient(0, 0, -0.45 * sc, 1.0 * sc);
-      capeG.addColorStop(0, teamLo);
-      capeG.addColorStop(1, '#000000');
-      ctx.fillStyle = capeG;
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.strokeStyle = team;
-      ctx.lineWidth = 0.05 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.06 * sc, 0.05 * sc);
-      ctx.quadraticCurveTo(-0.24 * sc, 0.55 * sc, -0.06 * sc + flutter * 0.7, 1.00 * sc);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Legs (back leg first, front leg later over torso).
-    const legSpread = 0.32 * sc;
-    const legSwing  = sw * 0.36 * sc * p.moving;
-    const drawSideLeg = (side, swingX, isBack) => {
-      const hipX     = side * legSpread;
-      const footX    = side * legSpread + swingX;
-      const kneeBend = side * legSpread + swingX * 0.55;
-      const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // thigh
-      ctx.fillStyle = isBack ? '#161616' : LEATHER;
-      capsule(ctx, hipX, hipY, kneeBend, kneeY, 0.19 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // shin
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.02 * sc, 0.16 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // knee greave + gold rivet
-      ctx.fillStyle = STEEL_MID;
-      ctx.beginPath();
-      ctx.arc(kneeBend, kneeY, 0.13 * sc, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-      ctx.fillStyle = GOLD;
-      ctx.beginPath();
-      ctx.arc(kneeBend, kneeY, 0.04 * sc, 0, TAU);
-      ctx.fill();
-      // boot
-      ctx.fillStyle = LEATHER_D;
-      rr(ctx, footX - 0.26 * sc, baseY - 0.22 * sc, 0.56 * sc, 0.24 * sc, 0.08 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.fillStyle = '#222';
-      rr(ctx, footX - 0.24 * sc, baseY - 0.20 * sc, 0.22 * sc, 0.09 * sc, 0.03 * sc);
-      ctx.fill();
-      ctx.fillStyle = GOLD_LO;
-      ctx.beginPath();
-      ctx.arc(footX + 0.18 * sc, baseY - 0.10 * sc, 0.03 * sc, 0, TAU);
-      ctx.fill();
-      // foot-plant dust
-      const plantA = Math.max(0, (isBack ? -sw : sw)) * p.moving;
-      if (plantA > 0.15) {
-        ctx.fillStyle = `rgba(160,160,160,${0.18 * plantA})`;
-        ctx.beginPath();
-        ctx.ellipse(footX - 0.10 * sc * (isBack ? -1 : 1), baseY + 0.02 * sc,
-                    0.40 * sc * plantA, 0.11 * sc * plantA, 0, 0, TAU);
-        ctx.fill();
-      }
-    };
-    drawSideLeg(-1, -legSwing, true);
-
-    // Shield arm + shield (behind torso).
-    const shieldX = -0.64 * sc - swingPhase * 0.10 * sc + windPhase * -0.06 * sc;
-    const shieldY = (shoY + hipY) / 2 + bob * 0.05 * sc;
-    ctx.fillStyle = STEEL_MID;
-    capsule(ctx, -0.48 * sc, shoY + 0.06 * sc,
-                 shieldX + 0.06 * sc, shieldY - 0.28 * sc, 0.13 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // shield body
-    ctx.save();
-    ctx.translate(shieldX, shieldY);
-    ctx.rotate(-0.13 - p.moving * 0.05);
-    ctx.beginPath();
-    ctx.moveTo(-0.48 * sc, -0.54 * sc);
-    ctx.lineTo(0.48 * sc, -0.54 * sc);
-    ctx.quadraticCurveTo(0.52 * sc, 0.22 * sc, 0, 0.74 * sc);
-    ctx.quadraticCurveTo(-0.52 * sc, 0.22 * sc, -0.48 * sc, -0.54 * sc);
-    ctx.closePath();
-    const sg = ctx.createLinearGradient(-0.42 * sc, -0.42 * sc, 0.46 * sc, 0.58 * sc);
-    sg.addColorStop(0, teamHi);
-    sg.addColorStop(0.45, team);
-    sg.addColorStop(1, teamLo);
-    ctx.fillStyle = sg;
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.15; ctx.stroke();
-    // gold trim
-    ctx.strokeStyle = GOLD;
-    ctx.lineWidth = 0.055 * sc;
-    ctx.beginPath();
-    ctx.moveTo(-0.40 * sc, -0.46 * sc);
-    ctx.lineTo(0.40 * sc, -0.46 * sc);
-    ctx.quadraticCurveTo(0.43 * sc, 0.20 * sc, 0, 0.62 * sc);
-    ctx.quadraticCurveTo(-0.43 * sc, 0.20 * sc, -0.40 * sc, -0.46 * sc);
-    ctx.closePath();
-    ctx.stroke();
-    // embossed white cross
-    ctx.fillStyle = 'rgba(255,255,255,0.94)';
-    ctx.fillRect(-0.075 * sc, -0.42 * sc, 0.15 * sc, 0.94 * sc);
-    ctx.fillRect(-0.32 * sc, -0.08 * sc, 0.64 * sc, 0.16 * sc);
-    // central gold boss
-    ctx.fillStyle = GOLD_HI;
-    ctx.beginPath();
-    ctx.arc(0, 0, 0.13 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = GOLD_LO;
-    ctx.lineWidth = 0.028 * sc;
-    ctx.stroke();
-    // corner rivets
-    ctx.fillStyle = GOLD;
-    for (const [rx, ry] of [[-0.34,-0.42],[0.34,-0.42],[-0.34,0.32],[0.34,0.32]]) {
-      ctx.beginPath();
-      ctx.arc(rx * sc, ry * sc, 0.04 * sc, 0, TAU);
-      ctx.fill();
-    }
-    // specular streak
-    ctx.fillStyle = 'rgba(255,255,255,0.32)';
-    ctx.beginPath();
-    ctx.moveTo(-0.32 * sc, -0.36 * sc);
-    ctx.lineTo(-0.20 * sc, -0.36 * sc);
-    ctx.lineTo(-0.04 * sc, 0.38 * sc);
-    ctx.lineTo(-0.16 * sc, 0.38 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // Torso (cel-shaded cuirass + tabard + belt + gorget + pauldron).
-    ctx.beginPath();
-    ctx.moveTo(-0.54 * sc, shoY);
-    ctx.quadraticCurveTo(-0.66 * sc, (shoY + hipY) * 0.5, -0.46 * sc, hipY);
-    ctx.lineTo(0.46 * sc, hipY);
-    ctx.quadraticCurveTo(0.66 * sc, (shoY + hipY) * 0.5, 0.54 * sc, shoY);
-    ctx.quadraticCurveTo(0, shoY - 0.26 * sc, -0.54 * sc, shoY);
-    ctx.closePath();
-    const tg = ctx.createLinearGradient(-0.5 * sc, shoY, 0.5 * sc, hipY);
-    tg.addColorStop(0, STEEL_HI);
-    tg.addColorStop(0.42, STEEL_MID);
-    tg.addColorStop(1, STEEL_LO);
-    ctx.fillStyle = tg;
-    ctx.fill();
-    // back-side shadow band (navy-tinted)
-    ctx.fillStyle = 'rgba(20,33,61,0.45)';
-    ctx.beginPath();
-    ctx.moveTo(-0.54 * sc, shoY);
-    ctx.quadraticCurveTo(-0.66 * sc, (shoY + hipY) * 0.5, -0.46 * sc, hipY);
-    ctx.lineTo(-0.20 * sc, hipY);
-    ctx.lineTo(-0.12 * sc, shoY - 0.04 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // bold outline
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.15;
-    ctx.beginPath();
-    ctx.moveTo(-0.54 * sc, shoY);
-    ctx.quadraticCurveTo(-0.66 * sc, (shoY + hipY) * 0.5, -0.46 * sc, hipY);
-    ctx.lineTo(0.46 * sc, hipY);
-    ctx.quadraticCurveTo(0.66 * sc, (shoY + hipY) * 0.5, 0.54 * sc, shoY);
-    ctx.quadraticCurveTo(0, shoY - 0.26 * sc, -0.54 * sc, shoY);
-    ctx.closePath();
-    ctx.stroke();
-    // chest centerline ridge
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth = 0.035 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0, shoY - 0.04 * sc);
-    ctx.lineTo(0, hipY);
-    ctx.stroke();
-    // tabard
-    ctx.fillStyle = team;
-    ctx.beginPath();
-    ctx.moveTo(-0.20 * sc, shoY + 0.06 * sc);
-    ctx.lineTo(0.20 * sc, shoY + 0.06 * sc);
-    ctx.lineTo(0.16 * sc, hipY + 0.22 * sc);
-    ctx.lineTo(0, hipY + 0.32 * sc);
-    ctx.lineTo(-0.16 * sc, hipY + 0.22 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = GOLD; ctx.lineWidth = 0.035 * sc; ctx.stroke();
-    // gold heater emblem
-    const tabMid = (shoY + hipY) * 0.5;
-    ctx.fillStyle = GOLD;
-    ctx.beginPath();
-    ctx.moveTo(-0.11 * sc, tabMid - 0.06 * sc);
-    ctx.lineTo(0.11 * sc, tabMid - 0.06 * sc);
-    ctx.quadraticCurveTo(0.12 * sc, tabMid + 0.08 * sc, 0, tabMid + 0.16 * sc);
-    ctx.quadraticCurveTo(-0.12 * sc, tabMid + 0.08 * sc, -0.11 * sc, tabMid - 0.06 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = GOLD_HI;
-    ctx.beginPath();
-    ctx.arc(0, tabMid + 0.02 * sc, 0.035 * sc, 0, TAU);
-    ctx.fill();
-    // belt + buckle
-    ctx.fillStyle = LEATHER_D;
-    rr(ctx, -0.48 * sc, hipY - 0.05 * sc, 0.96 * sc, 0.14 * sc, 0.03 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-    ctx.fillStyle = GOLD_HI;
-    rr(ctx, -0.09 * sc, hipY - 0.07 * sc, 0.18 * sc, 0.18 * sc, 0.02 * sc);
-    ctx.fill();
-    ctx.strokeStyle = GOLD_LO; ctx.lineWidth = 0.022 * sc; ctx.stroke();
-    // gorget
-    ctx.fillStyle = STEEL_LO;
-    rr(ctx, -0.18 * sc, shoY - 0.20 * sc, 0.36 * sc, 0.22 * sc, 0.07 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-    ctx.fillStyle = GOLD;
-    ctx.fillRect(-0.18 * sc, shoY - 0.05 * sc, 0.36 * sc, 0.035 * sc);
-    // front pauldron
-    ctx.fillStyle = STEEL_MID;
-    ctx.beginPath();
-    ctx.arc(0.50 * sc, shoY + 0.02 * sc, 0.26 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    ctx.fillStyle = STEEL_HI;
-    ctx.beginPath();
-    ctx.arc(0.42 * sc, shoY - 0.06 * sc, 0.11 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(20,33,61,0.45)';
-    ctx.beginPath();
-    ctx.arc(0.54 * sc, shoY + 0.08 * sc, 0.20 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = GOLD;
-    ctx.beginPath();
-    ctx.arc(0.50 * sc, shoY + 0.02 * sc, 0.055 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = GOLD_LO; ctx.lineWidth = 0.025 * sc; ctx.stroke();
-
-    // Front leg (over torso/belt).
-    drawSideLeg(1, legSwing, false);
-
-    // Sword arm + sword — full anticipation + strike + recovery cycle.
-    const restAng = -2.35, hitAng = 0.62, windAng = restAng - 0.42;
-    let armAng;
-    if (p.atk > 0) {
-      if (s < 0.18) armAng = lerp(restAng, windAng, easeOut(s / 0.18));
-      else if (s < 0.70) armAng = lerp(windAng, hitAng, easeOut((s - 0.18) / 0.52));
-      else armAng = lerp(hitAng, restAng, easeInOut((s - 0.70) / 0.30));
-    } else {
-      armAng = restAng;
-    }
-    const shX  = 0.46 * sc, shYY = shoY + 0.06 * sc;
-    const handX = shX + Math.cos(armAng) * 0.58 * sc;
-    const handY = shYY + Math.sin(armAng) * 0.58 * sc;
-    // motion smear (arc + ghost blades)
-    if (swingPhase > 0.05 && p.atk > 0) {
-      const trailStart = lerp(windAng, hitAng,
-                              easeOut(Math.max(0, (s - 0.18) / 0.52 - 0.22)));
-      ctx.strokeStyle = `rgba(255,255,255,${0.38 * swingPhase})`;
-      ctx.lineWidth = 0.20 * sc;
-      ctx.beginPath();
-      ctx.arc(shX, shYY, 1.05 * sc, trailStart, armAng, false);
-      ctx.stroke();
-      for (let i = 1; i <= 2; i++) {
-        const t2 = i / 3;
-        const gAng = lerp(armAng, trailStart, t2);
-        const gHX = shX + Math.cos(gAng) * 0.58 * sc;
-        const gHY = shYY + Math.sin(gAng) * 0.58 * sc;
-        ctx.save();
-        ctx.translate(gHX, gHY);
-        ctx.rotate(gAng + Math.PI / 2);
-        ctx.fillStyle = `rgba(220,232,245,${0.28 * (1 - t2) * swingPhase})`;
-        ctx.beginPath();
-        ctx.moveTo(-0.09 * sc, 0);
-        ctx.lineTo(0.09 * sc, 0);
-        ctx.lineTo(0, -1.45 * sc);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-    // upper arm
-    ctx.fillStyle = STEEL_MID;
-    capsule(ctx, shX, shYY, handX, handY, 0.14 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // sword
-    ctx.save();
-    ctx.translate(handX, handY);
-    ctx.rotate(armAng + Math.PI / 2);
-    const blg = ctx.createLinearGradient(-0.1 * sc, 0, 0.1 * sc, 0);
-    blg.addColorStop(0, '#ffffff');
-    blg.addColorStop(0.45, '#dde5ed');
-    blg.addColorStop(1, '#8b97a5');
-    ctx.fillStyle = blg;
-    ctx.beginPath();
-    ctx.moveTo(-0.095 * sc, 0);
-    ctx.lineTo(0.095 * sc, 0);
-    ctx.lineTo(0.06 * sc, -1.32 * sc);
-    ctx.lineTo(0, -1.52 * sc);
-    ctx.lineTo(-0.06 * sc, -1.32 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.95; ctx.stroke();
-    // fuller groove
-    ctx.strokeStyle = 'rgba(60,70,90,0.85)';
-    ctx.lineWidth = 0.028 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0, -0.06 * sc);
-    ctx.lineTo(0, -1.22 * sc);
-    ctx.stroke();
-    // edge streak
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth = 0.022 * sc;
-    ctx.beginPath();
-    ctx.moveTo(-0.035 * sc, -0.10 * sc);
-    ctx.lineTo(-0.035 * sc, -1.12 * sc);
-    ctx.stroke();
-    // gold crossguard with end gems
-    ctx.fillStyle = GOLD;
-    rr(ctx, -0.32 * sc, -0.04 * sc, 0.64 * sc, 0.12 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    ctx.fillStyle = GOLD_HI;
-    ctx.beginPath(); ctx.arc(-0.32 * sc, 0.02 * sc, 0.035 * sc, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc( 0.32 * sc, 0.02 * sc, 0.035 * sc, 0, TAU); ctx.fill();
-    // grip
-    ctx.fillStyle = LEATHER;
-    rr(ctx, -0.055 * sc, 0.08 * sc, 0.11 * sc, 0.30 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.6; ctx.stroke();
-    ctx.strokeStyle = LEATHER_D;
-    ctx.lineWidth = 0.02 * sc;
-    for (let i = 1; i < 4; i++) {
-      ctx.beginPath();
-      ctx.moveTo(-0.055 * sc, 0.08 * sc + i * 0.075 * sc);
-      ctx.lineTo(0.055 * sc, 0.08 * sc + i * 0.075 * sc);
-      ctx.stroke();
-    }
-    // pommel
-    ctx.fillStyle = GOLD;
-    ctx.beginPath();
-    ctx.arc(0, 0.44 * sc, 0.085 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.6; ctx.stroke();
-    ctx.fillStyle = team;
-    ctx.beginPath();
-    ctx.arc(0, 0.44 * sc, 0.038 * sc, 0, TAU);
-    ctx.fill();
-    if (strikePop > 0.05) {
-      ctx.fillStyle = `rgba(255,250,210,${0.9 * strikePop})`;
-      ctx.beginPath();
-      ctx.arc(0, -1.52 * sc, 0.22 * sc * strikePop, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = `rgba(255,255,255,${0.7 * strikePop})`;
-      ctx.beginPath();
-      ctx.arc(0, -1.52 * sc, 0.10 * sc * strikePop, 0, TAU);
-      ctx.fill();
-    }
-    ctx.restore();
-    // gauntlet
-    ctx.fillStyle = STEEL_HI;
-    ctx.beginPath();
-    ctx.arc(handX, handY, 0.14 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-
-    // Head + helmet (side view).
-    const hx = 0.04 * sc;
-    // plume (three streamers)
-    {
-      const tP = (p.t + p.phase) * 6.0;
-      ctx.save();
-      ctx.translate(hx, headY);
-      for (let i = 0; i < 3; i++) {
-        const ph = tP + i * 0.7;
-        const off = Math.sin(ph) * (0.06 + p.moving * 0.14) * sc;
-        const tipX = 0.32 * sc + off;
-        const baseDrop = -0.04 * sc + i * 0.06 * sc;
-        ctx.beginPath();
-        ctx.moveTo(-0.02 * sc, -0.42 * sc);
-        ctx.quadraticCurveTo(tipX, -0.46 * sc, 0.22 * sc + off * 0.6, baseDrop);
-        ctx.quadraticCurveTo(0.06 * sc, -0.22 * sc, -0.02 * sc, -0.42 * sc);
-        ctx.closePath();
-        ctx.fillStyle = i === 0 ? team : (i === 1 ? teamLo : '#000000');
-        ctx.fill();
-        ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-      }
-      // plume root (gold ferrule)
-      ctx.fillStyle = GOLD;
-      ctx.beginPath();
-      ctx.arc(0, -0.42 * sc, 0.075 * sc, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-      ctx.restore();
-    }
-    // helmet dome
-    const hg = ctx.createLinearGradient(hx - 0.36 * sc, headY - 0.36 * sc,
-                                        hx + 0.36 * sc, headY + 0.36 * sc);
-    hg.addColorStop(0, STEEL_HI);
-    hg.addColorStop(0.48, STEEL_MID);
-    hg.addColorStop(1, STEEL_LO);
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.arc(hx, headY, 0.40 * sc, Math.PI, TAU);
-    ctx.lineTo(hx + 0.40 * sc, headY + 0.34 * sc);
-    ctx.quadraticCurveTo(hx, headY + 0.48 * sc, hx - 0.40 * sc, headY + 0.34 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // back-side shadow band
-    ctx.fillStyle = 'rgba(20,33,61,0.50)';
-    ctx.beginPath();
-    ctx.arc(hx, headY, 0.40 * sc, Math.PI, Math.PI * 1.55);
-    ctx.lineTo(hx - 0.40 * sc, headY + 0.34 * sc);
-    ctx.lineTo(hx - 0.06 * sc, headY + 0.34 * sc);
-    ctx.lineTo(hx - 0.06 * sc, headY - 0.30 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.25;
-    ctx.beginPath();
-    ctx.arc(hx, headY, 0.40 * sc, Math.PI, TAU);
-    ctx.lineTo(hx + 0.40 * sc, headY + 0.34 * sc);
-    ctx.quadraticCurveTo(hx, headY + 0.48 * sc, hx - 0.40 * sc, headY + 0.34 * sc);
-    ctx.closePath();
-    ctx.stroke();
-    // brow band + spike
-    ctx.fillStyle = GOLD;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.38 * sc, headY + 0.02 * sc);
-    ctx.lineTo(hx + 0.38 * sc, headY + 0.02 * sc);
-    ctx.lineTo(hx + 0.38 * sc, headY - 0.04 * sc);
-    ctx.quadraticCurveTo(hx, headY - 0.12 * sc, hx - 0.38 * sc, headY - 0.04 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = GOLD_LO; ctx.lineWidth = 0.022 * sc; ctx.stroke();
-    ctx.fillStyle = GOLD_HI;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.05 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx + 0.05 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx, headY - 0.20 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-    drawHelmFront(hx);
-    // helmet rim highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 0.05 * sc;
-    ctx.beginPath();
-    ctx.arc(hx, headY, 0.35 * sc, Math.PI * 1.06, Math.PI * 1.78);
-    ctx.stroke();
-
-  // ── FRONT VIEW ─────────────────────────────────────────────────────────
-  } else if (p.view === 'front') {
+  if (p.view === 'front') {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.05 * sc;
     ctx.translate(sway, 0);
 
@@ -1619,7 +1151,7 @@ const G_CREAM  = '#eae2b7';
 const G_WOOD   = '#a04500';      // club shaft (sun-baked wood)
 
 // Polished 2.5D Giant — bare-chested barbarian with a knotted wooden club.
-// 1.5× the Knight's silhouette. View-aware (side / front / back), with a
+// 1.5× the Knight's silhouette. View-aware (front / back), with a
 // three-phase overhead-slam attack: windup raises the club, strike slams it
 // down with a ground-shock ring, recovery returns to rest. Idle breathing,
 // beard flutter, foot-plant dust, spawn rune ring and hit flash all match the
@@ -1875,83 +1407,9 @@ export function drawGiant(ctx, gx, gy, tile, p) {
     ctx.stroke();
   };
 
-  // Side-profile beard hangs forward off the chin.
-  const drawBeardSide = () => {
-    ctx.fillStyle = G_GOLD;
-    ctx.beginPath();
-    ctx.moveTo(-0.06 * sc, headY + 0.18 * sc);
-    ctx.quadraticCurveTo(0.22 * sc + beardSway * 0.7, headY + 0.42 * sc,
-                         0.18 * sc + beardSway, headY + 0.82 * sc);
-    ctx.quadraticCurveTo(0.06 * sc + beardSway, headY + 0.92 * sc,
-                         -0.04 * sc + beardSway * 0.4, headY + 0.82 * sc);
-    ctx.quadraticCurveTo(-0.12 * sc, headY + 0.50 * sc, -0.06 * sc, headY + 0.18 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-    // single braid groove
-    ctx.strokeStyle = G_GOLD_LO; ctx.lineWidth = 0.045 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0.06 * sc + beardSway * 0.5, headY + 0.30 * sc);
-    ctx.lineTo(0.08 * sc + beardSway, headY + 0.78 * sc);
-    ctx.stroke();
-    // stacked gold rings
-    ctx.fillStyle = G_GOLD_HI;
-    for (const by of [0.42, 0.60, 0.76]) {
-      ctx.beginPath();
-      ctx.arc(0.07 * sc + beardSway * 0.6, headY + by * sc, 0.046 * sc, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = G_GOLD_LO; ctx.lineWidth = 0.020 * sc; ctx.stroke();
-    }
-  };
-
   // ── face features (heavy brow + open human eyes + broad nose) ──────────
   // Was: dark slit eyes (read as "ogre/brute"). Now: clear white sclera +
   // dark iris, heavy angled brows, broad nose — a beefy barbarian human.
-  const drawFaceSide = () => {
-    // brow ridge shadow
-    ctx.fillStyle = G_SKIN_SH;
-    ctx.beginPath();
-    ctx.moveTo(-0.18 * sc, headY - 0.04 * sc);
-    ctx.lineTo(0.24 * sc, headY - 0.04 * sc);
-    ctx.lineTo(0.22 * sc, headY + 0.02 * sc);
-    ctx.lineTo(-0.18 * sc, headY + 0.02 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // eye — sclera + iris + catchlight
-    const ex = 0.16 * sc, ey = headY + 0.10 * sc;
-    ctx.fillStyle = '#f5eee8';
-    ctx.beginPath();
-    ctx.ellipse(ex, ey, 0.055 * sc, 0.030 * sc, 0, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = 0.020 * sc; ctx.stroke();
-    ctx.fillStyle = '#3a2410';
-    ctx.beginPath();
-    ctx.arc(ex + 0.010 * sc, ey + 0.005 * sc, 0.024 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = `rgba(255,255,255,${0.85 + strikePop * 0.15})`;
-    ctx.beginPath();
-    ctx.arc(ex + 0.020 * sc, ey - 0.004 * sc, 0.012 * sc, 0, TAU);
-    ctx.fill();
-    // angry brow above (downward-angled toward nose)
-    ctx.strokeStyle = '#3a2410';
-    ctx.lineWidth = 0.035 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0.06 * sc, ey - 0.075 * sc);
-    ctx.lineTo(0.24 * sc, ey - 0.040 * sc);
-    ctx.stroke();
-    // broad nose / cheekbone wedge
-    ctx.fillStyle = G_SKIN_SH;
-    ctx.beginPath();
-    ctx.moveTo(0.30 * sc, headY + 0.13 * sc);
-    ctx.lineTo(0.38 * sc, headY + 0.18 * sc);
-    ctx.lineTo(0.30 * sc, headY + 0.22 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // war-paint stripe across the cheek (team-tinted)
-    ctx.fillStyle = TEAM;
-    ctx.fillRect(0.02 * sc, headY + 0.18 * sc, 0.22 * sc, 0.030 * sc);
-  };
-
   const drawFaceFront = (cx) => {
     // brow ridge shadow
     ctx.fillStyle = G_SKIN_SH;
@@ -2034,19 +1492,6 @@ export function drawGiant(ctx, gx, gy, tile, p) {
     ctx.strokeStyle = G_GOLD_LO; ctx.lineWidth = 0.020 * sc; ctx.stroke();
   };
 
-  // Common arm angles for the overhead-slam. Side view uses a wider arc.
-  const restAng_S = -Math.PI * 0.72;
-  const windAng_S = -Math.PI * 0.53;
-  const hitAng_S  =  Math.PI * 0.32;
-  let armAng_S;
-  if (p.atk > 0) {
-    if (s < 0.22)      armAng_S = lerp(restAng_S, windAng_S, easeOut(s / 0.22));
-    else if (s < 0.62) armAng_S = lerp(windAng_S, hitAng_S, easeOut((s - 0.22) / 0.40));
-    else               armAng_S = lerp(hitAng_S, restAng_S, easeInOut((s - 0.62) / 0.38));
-  } else {
-    armAng_S = restAng_S;
-  }
-
   // Front / back view arms swing OVER the head — chop straight down in front.
   const restAng_F = -Math.PI / 2 + 0.30;
   const windAng_F = -Math.PI / 2 - 0.30;
@@ -2060,372 +1505,7 @@ export function drawGiant(ctx, gx, gy, tile, p) {
     armAng_F = restAng_F;
   }
 
-  // ── SIDE VIEW ──────────────────────────────────────────────────────────
-  if (p.view === 'side') {
-    const legSpread = 0.30 * sc;
-    const legSwing  = sw * 0.34 * sc * p.moving;
-    const drawSideLeg = (side, swingX, isBack) => {
-      const hipX     = side * legSpread;
-      const footX    = side * legSpread + swingX;
-      const kneeBend = side * legSpread + swingX * 0.55;
-      const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // bare thigh (skin)
-      ctx.fillStyle = isBack ? G_SKIN_SH : G_SKIN;
-      capsule(ctx, hipX, hipY + 0.02 * sc, kneeBend, kneeY, 0.24 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // shin
-      ctx.fillStyle = isBack ? G_SKIN_SH : G_SKIN;
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.02 * sc, 0.20 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // knee highlight
-      if (!isBack) {
-        ctx.fillStyle = G_SKIN_HI;
-        ctx.beginPath();
-        ctx.arc(kneeBend - 0.05 * sc, kneeY - 0.04 * sc, 0.07 * sc, 0, TAU);
-        ctx.fill();
-      }
-      // calf shadow band (cel-shade)
-      ctx.fillStyle = 'rgba(0,48,73,0.22)';
-      capsule(ctx, kneeBend + 0.04 * sc, kneeY + 0.06 * sc,
-                   footX + 0.04 * sc, baseY - 0.06 * sc, 0.10 * sc);
-      ctx.fill();
-      // sandal wrap (cream with dark cross-bindings)
-      ctx.fillStyle = G_CREAM;
-      rr(ctx, footX - 0.30 * sc, baseY - 0.20 * sc, 0.60 * sc, 0.20 * sc, 0.07 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.strokeStyle = OL; ctx.lineWidth = 0.024 * sc;
-      ctx.beginPath();
-      ctx.moveTo(footX - 0.20 * sc, baseY - 0.20 * sc);
-      ctx.lineTo(footX + 0.06 * sc, baseY - 0.02 * sc);
-      ctx.moveTo(footX + 0.12 * sc, baseY - 0.20 * sc);
-      ctx.lineTo(footX - 0.12 * sc, baseY - 0.02 * sc);
-      ctx.stroke();
-      // foot-plant dust
-      const plantA = Math.max(0, (isBack ? -sw : sw)) * p.moving;
-      if (plantA > 0.15) {
-        ctx.fillStyle = `rgba(170,150,120,${0.32 * plantA})`;
-        ctx.beginPath();
-        ctx.ellipse(footX - 0.12 * sc * (isBack ? -1 : 1), baseY + 0.02 * sc,
-                    0.55 * sc * plantA, 0.14 * sc * plantA, 0, 0, TAU);
-        ctx.fill();
-      }
-    };
-    drawSideLeg(-1, -legSwing, true);
-
-    // Back kilt panel (behind front leg, draped lower).
-    {
-      const ky0 = hipY + 0.06 * sc;
-      const kyB = baseY - 0.35 * sc;
-      ctx.fillStyle = G_RED_LO;
-      ctx.beginPath();
-      ctx.moveTo(-0.42 * sc, ky0);
-      ctx.lineTo(-0.46 * sc, kyB);
-      ctx.quadraticCurveTo(-0.20 * sc, kyB + 0.04 * sc, 0.22 * sc, kyB);
-      ctx.lineTo(0.42 * sc, ky0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    }
-
-    // Bare-chested torso (big slabs of muscle, cel-shaded skin).
-    ctx.beginPath();
-    ctx.moveTo(-0.46 * sc, shoY);
-    ctx.quadraticCurveTo(-0.56 * sc, (shoY + hipY) * 0.5, -0.40 * sc, hipY);
-    ctx.lineTo(0.46 * sc, hipY);
-    ctx.quadraticCurveTo(0.64 * sc, (shoY + hipY) * 0.5, 0.56 * sc, shoY);
-    ctx.quadraticCurveTo(0.10 * sc, shoY - 0.24 * sc, -0.46 * sc, shoY);
-    ctx.closePath();
-    const tg = ctx.createLinearGradient(0, shoY, 0, hipY);
-    tg.addColorStop(0, G_SKIN_HI);
-    tg.addColorStop(0.5, G_SKIN);
-    tg.addColorStop(1, G_SKIN_SH);
-    ctx.fillStyle = tg;
-    ctx.fill();
-    // back-side shadow band
-    ctx.fillStyle = 'rgba(0,48,73,0.30)';
-    ctx.beginPath();
-    ctx.moveTo(-0.46 * sc, shoY);
-    ctx.quadraticCurveTo(-0.56 * sc, (shoY + hipY) * 0.5, -0.40 * sc, hipY);
-    ctx.lineTo(-0.18 * sc, hipY);
-    ctx.lineTo(-0.10 * sc, shoY - 0.04 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.15;
-    ctx.beginPath();
-    ctx.moveTo(-0.46 * sc, shoY);
-    ctx.quadraticCurveTo(-0.56 * sc, (shoY + hipY) * 0.5, -0.40 * sc, hipY);
-    ctx.lineTo(0.46 * sc, hipY);
-    ctx.quadraticCurveTo(0.64 * sc, (shoY + hipY) * 0.5, 0.56 * sc, shoY);
-    ctx.quadraticCurveTo(0.10 * sc, shoY - 0.24 * sc, -0.46 * sc, shoY);
-    ctx.closePath();
-    ctx.stroke();
-    // pec centerline
-    ctx.strokeStyle = G_SKIN_SH; ctx.lineWidth = 0.036 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0.12 * sc, shoY + 0.04 * sc);
-    ctx.lineTo(0.06 * sc, hipY - 0.10 * sc);
-    ctx.stroke();
-    // ab cuts (three short arcs)
-    for (let i = 0; i < 3; i++) {
-      const ay = lerp(shoY + 0.55 * sc, hipY - 0.06 * sc, i / 2);
-      ctx.strokeStyle = G_SKIN_SH; ctx.lineWidth = 0.026 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.02 * sc, ay);
-      ctx.quadraticCurveTo(0.04 * sc, ay - 0.02 * sc, 0.22 * sc, ay - 0.02 * sc);
-      ctx.stroke();
-    }
-    // war-paint diagonal stripe across chest (team-tinted)
-    ctx.fillStyle = TEAM;
-    ctx.beginPath();
-    ctx.moveTo(-0.34 * sc, shoY + 0.12 * sc);
-    ctx.lineTo(0.42 * sc, shoY + 0.28 * sc);
-    ctx.lineTo(0.42 * sc, shoY + 0.36 * sc);
-    ctx.lineTo(-0.34 * sc, shoY + 0.20 * sc);
-    ctx.closePath();
-    ctx.fill();
-
-    // Belt (dark teal-blue leather) + gold buckle with team gem.
-    ctx.fillStyle = G_DARK;
-    rr(ctx, -0.48 * sc, hipY - 0.05 * sc, 0.96 * sc, 0.18 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-    // belt stitching highlights
-    ctx.strokeStyle = G_DARK_D; ctx.lineWidth = 0.018 * sc;
-    ctx.beginPath();
-    ctx.moveTo(-0.46 * sc, hipY + 0.10 * sc);
-    ctx.lineTo(0.46 * sc, hipY + 0.10 * sc);
-    ctx.stroke();
-    // buckle (gold square with team-tinted gem)
-    ctx.fillStyle = G_GOLD;
-    rr(ctx, 0.06 * sc, hipY - 0.07 * sc, 0.24 * sc, 0.22 * sc, 0.025 * sc);
-    ctx.fill();
-    ctx.strokeStyle = G_GOLD_LO; ctx.lineWidth = 0.024 * sc; ctx.stroke();
-    ctx.fillStyle = TEAM_HI;
-    ctx.beginPath();
-    ctx.arc(0.18 * sc, hipY + 0.04 * sc, 0.060 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = 0.020 * sc; ctx.stroke();
-
-    // Front kilt panel (red, pleated, with gold trim & dark hem).
-    {
-      const ky0 = hipY + 0.06 * sc;
-      const kyB = baseY - 0.35 * sc;
-      ctx.fillStyle = G_RED;
-      ctx.beginPath();
-      ctx.moveTo(-0.40 * sc, ky0);
-      ctx.lineTo(-0.44 * sc, kyB);
-      ctx.quadraticCurveTo(0, kyB + 0.06 * sc, 0.44 * sc, kyB);
-      ctx.lineTo(0.40 * sc, ky0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // bright pleat
-      ctx.fillStyle = G_RED_HI;
-      ctx.beginPath();
-      ctx.moveTo(0.10 * sc, ky0 + 0.04 * sc);
-      ctx.lineTo(0.08 * sc, kyB - 0.04 * sc);
-      ctx.lineTo(0.28 * sc, kyB - 0.06 * sc);
-      ctx.lineTo(0.32 * sc, ky0 + 0.04 * sc);
-      ctx.closePath();
-      ctx.fill();
-      // shadow pleat
-      ctx.fillStyle = G_RED_LO;
-      ctx.beginPath();
-      ctx.moveTo(-0.40 * sc, ky0 + 0.04 * sc);
-      ctx.lineTo(-0.42 * sc, kyB - 0.04 * sc);
-      ctx.lineTo(-0.20 * sc, kyB - 0.06 * sc);
-      ctx.lineTo(-0.18 * sc, ky0 + 0.04 * sc);
-      ctx.closePath();
-      ctx.fill();
-      // pleat lines (subtle dark divisions)
-      ctx.strokeStyle = G_RED_LO; ctx.lineWidth = 0.026 * sc;
-      for (let i = 0; i < 4; i++) {
-        const px = lerp(-0.36, 0.36, i / 3) * sc;
-        ctx.beginPath();
-        ctx.moveTo(px, ky0 + 0.04 * sc);
-        ctx.lineTo(px * 1.08, kyB - 0.04 * sc);
-        ctx.stroke();
-      }
-      // gold trim at the waist
-      ctx.fillStyle = G_GOLD;
-      ctx.fillRect(-0.42 * sc, ky0 + 0.02 * sc, 0.84 * sc, 0.028 * sc);
-      // dark hem (cracked leather)
-      ctx.fillStyle = G_DARK;
-      ctx.beginPath();
-      ctx.moveTo(-0.44 * sc, kyB - 0.08 * sc);
-      ctx.lineTo(0.44 * sc, kyB - 0.08 * sc);
-      ctx.lineTo(0.44 * sc, kyB - 0.02 * sc);
-      ctx.quadraticCurveTo(0, kyB + 0.04 * sc, -0.44 * sc, kyB - 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Front (near) leg over the kilt.
-    drawSideLeg(1, legSwing, false);
-
-    // Back pauldron (gold-rimmed, smaller, behind shoulder).
-    ctx.fillStyle = G_GOLD;
-    ctx.beginPath();
-    ctx.arc(-0.44 * sc, shoY - 0.02 * sc, 0.24 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    ctx.fillStyle = G_GOLD_HI;
-    ctx.beginPath();
-    ctx.arc(-0.48 * sc, shoY - 0.10 * sc, 0.09 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(0,48,73,0.40)';
-    ctx.beginPath();
-    ctx.arc(-0.40 * sc, shoY + 0.06 * sc, 0.16 * sc, 0, TAU);
-    ctx.fill();
-
-    // Head (skin dome + top-knot) and beard.
-    const hx = 0.14 * sc;
-    drawHeadDome(hx, false);
-    // ear
-    ctx.fillStyle = G_SKIN_SH;
-    ctx.beginPath();
-    ctx.ellipse(-0.20 * sc, headY + 0.12 * sc, 0.06 * sc, 0.10 * sc, 0, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.6; ctx.stroke();
-    drawFaceSide();
-    drawBeardSide();
-    // idle breath puff at mouth
-    if (p.moving < 0.05) {
-      const bP = Math.sin(p.t * 1.3 + p.phase);
-      if (bP > 0.80) {
-        const bF = (bP - 0.80) / 0.20;
-        ctx.fillStyle = `rgba(255,255,255,${0.55 * bF})`;
-        ctx.beginPath();
-        ctx.ellipse(0.36 * sc + bF * 0.10 * sc, headY + 0.22 * sc,
-                    0.10 * sc * bF, 0.06 * sc * bF, 0, 0, TAU);
-        ctx.fill();
-      }
-    }
-
-    // ── near arm + two-handed club grip ──────────────────────────────────
-    // Hand position is driven by armAng_S; the arm reaches up over shoulder
-    // toward the club shaft. The far hand grips the shaft lower.
-    const shX = 0.20 * sc, shYY = shoY + 0.20 * sc;
-    const handR = 0.78 * sc;
-    const handX = shX + Math.cos(armAng_S) * handR;
-    const handY = shYY + Math.sin(armAng_S) * handR;
-    const farShX = -0.12 * sc, farShYY = shoY + 0.22 * sc;
-    const farHandX = handX - Math.cos(armAng_S) * 0.22 * sc;
-    const farHandY = handY - Math.sin(armAng_S) * 0.22 * sc;
-
-    // far upper arm (drawn behind, shadow side)
-    ctx.fillStyle = G_SKIN_SH;
-    capsule(ctx, farShX, farShYY, farHandX, farHandY, 0.18 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // far wrist wrap
-    ctx.save();
-    ctx.translate(farHandX, farHandY);
-    ctx.rotate(armAng_S);
-    ctx.fillStyle = G_CREAM;
-    rr(ctx, -0.14 * sc, -0.10 * sc, 0.24 * sc, 0.20 * sc, 0.05 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    ctx.restore();
-
-    // motion smear arc + ghost clubs on strike
-    if (swingPhase > 0.05 && p.atk > 0) {
-      const trailStart = lerp(windAng_S, hitAng_S,
-                              easeOut(Math.max(0, (s - 0.22) / 0.40 - 0.25)));
-      ctx.strokeStyle = `rgba(255,255,255,${0.42 * swingPhase})`;
-      ctx.lineWidth = 0.26 * sc;
-      ctx.beginPath();
-      ctx.arc(shX, shYY, handR + 0.3 * sc, trailStart, armAng_S, false);
-      ctx.stroke();
-      for (let i = 1; i <= 2; i++) {
-        const t2 = i / 3;
-        const gAng = lerp(armAng_S, trailStart, t2);
-        const gHX = shX + Math.cos(gAng) * handR;
-        const gHY = shYY + Math.sin(gAng) * handR;
-        ctx.save();
-        ctx.translate(gHX, gHY);
-        ctx.rotate(gAng + Math.PI / 2);
-        ctx.globalAlpha = 0.28 * (1 - t2) * swingPhase;
-        drawClub();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-      }
-    }
-
-    // near upper arm (skin)
-    ctx.fillStyle = G_SKIN;
-    capsule(ctx, shX, shYY, handX, handY, 0.20 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // bicep highlight
-    ctx.fillStyle = G_SKIN_HI;
-    ctx.save();
-    ctx.translate((shX + handX) / 2, (shYY + handY) / 2);
-    ctx.rotate(armAng_S);
-    ctx.beginPath();
-    ctx.ellipse(-0.06 * sc, -0.04 * sc, 0.14 * sc, 0.06 * sc, 0, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-    // near wrist wrap (cream cloth)
-    ctx.save();
-    ctx.translate(handX, handY);
-    ctx.rotate(armAng_S);
-    ctx.fillStyle = G_CREAM;
-    rr(ctx, -0.18 * sc, -0.13 * sc, 0.32 * sc, 0.26 * sc, 0.07 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    // dark wrap stripes
-    ctx.strokeStyle = G_DARK; ctx.lineWidth = 0.022 * sc;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(-0.16 * sc, i * 0.080 * sc);
-      ctx.lineTo(0.10 * sc, i * 0.080 * sc);
-      ctx.stroke();
-    }
-    ctx.restore();
-    // gold knuckle rings
-    ctx.fillStyle = G_GOLD;
-    for (let i = -1; i <= 1; i++) {
-      const krX = handX + Math.cos(armAng_S) * (0.10 * sc + i * 0.04 * sc);
-      const krY = handY + Math.sin(armAng_S) * (0.10 * sc + i * 0.04 * sc);
-      ctx.beginPath();
-      ctx.arc(krX, krY, 0.030 * sc, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = G_GOLD_LO; ctx.lineWidth = 0.014 * sc; ctx.stroke();
-    }
-
-    // the club (drawn at the near-hand grip)
-    ctx.save();
-    ctx.translate(handX, handY);
-    ctx.rotate(armAng_S + Math.PI / 2);
-    drawClub();
-    ctx.restore();
-
-    // Front pauldron (drawn over the arm so it caps the shoulder properly).
-    ctx.fillStyle = G_GOLD;
-    ctx.beginPath();
-    ctx.arc(0.44 * sc, shoY + 0.02 * sc, 0.30 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    ctx.fillStyle = G_GOLD_HI;
-    ctx.beginPath();
-    ctx.arc(0.38 * sc, shoY - 0.10 * sc, 0.12 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(0,48,73,0.42)';
-    ctx.beginPath();
-    ctx.arc(0.50 * sc, shoY + 0.12 * sc, 0.20 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = TEAM_HI;
-    ctx.beginPath();
-    ctx.arc(0.44 * sc, shoY + 0.02 * sc, 0.060 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-
-  // ── FRONT VIEW ─────────────────────────────────────────────────────────
-  } else if (p.view === 'front') {
+  if (p.view === 'front') {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.06 * sc;
     ctx.translate(sway, 0);
 
@@ -3128,7 +2208,7 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
 }
 
 // Polished 2.5D Archer — a hooded female elven ranger with a curved bow.
-// Slimmer and ~10% shorter than the Knight. View-aware (side / front / back)
+// Slimmer and ~10% shorter than the Knight. View-aware (front / back)
 // with a three-phase nock → draw → release attack; cloak flutters and the
 // hood drops a soft shadow across the face from which a single teal eye-glow
 // peeks. Idle breathing, hood sway, occasional blink, spawn rune ring,
@@ -3146,7 +2226,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
   const lift = (bob * 0.32 + breath) * sc;
   const headBob = Math.sin(p.gait * TAU * 2) * p.moving * 0.014 * sc;
   const hoodSway = Math.sin(p.t * 2.4 + p.phase) * 0.020 * sc;
-  // Cloak hem flutter (drives the trailing edge in side/back views).
+  // Cloak hem flutter (drives the trailing edge in the back view).
   const tC = (p.t + p.phase) * 4.6;
   const flutter = (Math.sin(tC) * (0.07 + p.moving * 0.20) +
                    Math.sin(tC * 1.7) * 0.045) * sc;
@@ -3421,50 +2501,6 @@ export function drawArcher(ctx, gx, gy, tile, p) {
   // with a darker teal trim where it meets the face. drawHoodOuter is the
   // top half (back of the hood) and is drawn over the head; drawHoodFace
   // pulls the inner shadow over the upper part of the face.
-  const drawHoodSide = (hx) => {
-    // Outer hood silhouette.
-    ctx.fillStyle = A_MINT;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.36 * sc, headY + 0.32 * sc);
-    ctx.quadraticCurveTo(hx - 0.46 * sc + hoodSway * 0.5, headY - 0.28 * sc,
-                         hx - 0.04 * sc + hoodSway, headY - 0.48 * sc);
-    ctx.quadraticCurveTo(hx + 0.32 * sc, headY - 0.34 * sc,
-                         hx + 0.40 * sc, headY + 0.10 * sc);
-    ctx.lineTo(hx + 0.34 * sc, headY + 0.32 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Dark teal trim line along the hood's edge.
-    ctx.strokeStyle = A_DARK;
-    ctx.lineWidth = 0.030 * sc;
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.40 * sc, headY + 0.10 * sc);
-    ctx.quadraticCurveTo(hx + 0.32 * sc, headY - 0.34 * sc,
-                         hx - 0.04 * sc + hoodSway, headY - 0.48 * sc);
-    ctx.stroke();
-    // Inner shadow under the brow (teal interior visible through the opening).
-    ctx.fillStyle = A_DARK_D;
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.06 * sc, headY - 0.18 * sc);
-    ctx.quadraticCurveTo(hx + 0.34 * sc, headY - 0.08 * sc,
-                         hx + 0.30 * sc, headY + 0.12 * sc);
-    ctx.lineTo(hx + 0.10 * sc, headY + 0.10 * sc);
-    ctx.quadraticCurveTo(hx - 0.04 * sc, headY - 0.04 * sc,
-                         hx + 0.06 * sc, headY - 0.18 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // Mint highlight on the top of the hood.
-    ctx.fillStyle = A_MINT_HI;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.10 * sc + hoodSway, headY - 0.44 * sc);
-    ctx.quadraticCurveTo(hx - 0.30 * sc + hoodSway * 0.6, headY - 0.20 * sc,
-                         hx - 0.30 * sc, headY + 0.06 * sc);
-    ctx.quadraticCurveTo(hx - 0.20 * sc, headY - 0.20 * sc,
-                         hx + 0.02 * sc + hoodSway, headY - 0.38 * sc);
-    ctx.closePath();
-    ctx.fill();
-  };
-
   const drawHoodFront = (hx) => {
     // Outer hood: oval that wraps around the head from behind.
     ctx.fillStyle = A_MINT;
@@ -3577,41 +2613,6 @@ export function drawArcher(ctx, gx, gy, tile, p) {
   // catchlight, soft eyelash arc above for a feminine read. Blink collapses
   // the eye to a thin lash line so the rig still feels alive but human.
   const eyeOpen = () => (blinking ? 0 : 1) - p.flash * 0.0;
-  const drawEyeSide = (hx) => {
-    const o = eyeOpen();
-    const ex = hx + 0.20 * sc, ey = headY + 0.08 * sc;
-    // upper eyelid + lash line
-    ctx.strokeStyle = A_OL;
-    ctx.lineWidth = 0.022 * sc;
-    ctx.beginPath();
-    ctx.moveTo(ex - 0.07 * sc, ey - 0.005 * sc);
-    ctx.quadraticCurveTo(ex, ey - 0.045 * sc, ex + 0.06 * sc, ey + 0.005 * sc);
-    ctx.stroke();
-    if (o > 0.05) {
-      // sclera (white of the eye)
-      ctx.fillStyle = `rgba(245,238,232,${o})`;
-      ctx.beginPath();
-      ctx.ellipse(ex, ey + 0.005 * sc, 0.055 * sc, 0.030 * sc, 0, 0, TAU);
-      ctx.fill();
-      // brown iris
-      ctx.fillStyle = `rgba(78,52,32,${o})`;
-      ctx.beginPath();
-      ctx.arc(ex + 0.012 * sc, ey + 0.008 * sc, 0.026 * sc, 0, TAU);
-      ctx.fill();
-      // tiny white catchlight
-      ctx.fillStyle = `rgba(255,255,255,${o})`;
-      ctx.beginPath();
-      ctx.arc(ex + 0.020 * sc, ey + 0.000 * sc, 0.010 * sc, 0, TAU);
-      ctx.fill();
-    }
-    // soft eyebrow
-    ctx.strokeStyle = `rgba(80,55,40,0.85)`;
-    ctx.lineWidth = 0.020 * sc;
-    ctx.beginPath();
-    ctx.moveTo(ex - 0.06 * sc, ey - 0.07 * sc);
-    ctx.quadraticCurveTo(ex, ey - 0.095 * sc, ex + 0.05 * sc, ey - 0.06 * sc);
-    ctx.stroke();
-  };
   const drawEyesFront = (hx) => {
     const o = eyeOpen();
     for (const dx of [-0.10, 0.10]) {
@@ -3652,38 +2653,6 @@ export function drawArcher(ctx, gx, gy, tile, p) {
 
   // Skin patch — visible face inside the hood. Expanded from the older
   // "just-nose-chin" sliver so the eye/cheek area also reads as human skin.
-  const drawSkinSide = (hx) => {
-    ctx.fillStyle = A_SKIN;
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.04 * sc, headY - 0.10 * sc);
-    ctx.quadraticCurveTo(hx + 0.34 * sc, headY - 0.04 * sc,
-                         hx + 0.34 * sc, headY + 0.10 * sc);
-    ctx.quadraticCurveTo(hx + 0.32 * sc, headY + 0.20 * sc,
-                         hx + 0.28 * sc, headY + 0.30 * sc);
-    ctx.quadraticCurveTo(hx + 0.16 * sc, headY + 0.38 * sc,
-                         hx + 0.04 * sc, headY + 0.32 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    // Cheek blush.
-    ctx.fillStyle = `rgba(232,168,155,0.65)`;
-    ctx.beginPath();
-    ctx.ellipse(hx + 0.22 * sc, headY + 0.16 * sc, 0.07 * sc, 0.04 * sc, 0, 0, TAU);
-    ctx.fill();
-    // Nose ridge highlight.
-    ctx.fillStyle = A_LIGHT;
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.26 * sc, headY + 0.12 * sc);
-    ctx.lineTo(hx + 0.32 * sc, headY + 0.18 * sc);
-    ctx.lineTo(hx + 0.24 * sc, headY + 0.18 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // Lip — soft red, slightly fuller for a feminine read.
-    ctx.fillStyle = A_RED;
-    ctx.beginPath();
-    ctx.ellipse(hx + 0.20 * sc, headY + 0.26 * sc, 0.07 * sc, 0.020 * sc, 0, 0, TAU);
-    ctx.fill();
-  };
   const drawSkinFront = (hx) => {
     // Wider face oval — visible upper face (eyes/cheeks) + lower face (lips/chin).
     ctx.fillStyle = A_SKIN;
@@ -3723,378 +2692,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     ctx.fill();
   };
 
-  // ── SIDE VIEW ──────────────────────────────────────────────────────────
-  if (p.view === 'side') {
-
-    // Trailing cloak (drawn first so it sits behind everything else).
-    {
-      ctx.save();
-      ctx.translate(-0.14 * sc, shoY + 0.10 * sc);
-      ctx.rotate(0.04 + p.moving * 0.10);
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(-0.50 * sc + flutter * 0.3, 0.55 * sc,
-                           -0.30 * sc + flutter, 1.25 * sc);
-      ctx.quadraticCurveTo(-0.04 * sc, 1.35 * sc, 0.18 * sc, 1.20 * sc);
-      ctx.quadraticCurveTo(0.22 * sc, 0.50 * sc, 0.20 * sc, 0);
-      ctx.closePath();
-      const cg = ctx.createLinearGradient(0, 0, -0.4 * sc, 1.1 * sc);
-      cg.addColorStop(0, A_MINT);
-      cg.addColorStop(0.55, A_DARK);
-      cg.addColorStop(1, A_DARK_D);
-      ctx.fillStyle = cg;
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // Trailing edge piping (dark teal accent).
-      ctx.strokeStyle = A_DARK_D;
-      ctx.lineWidth = 0.034 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.50 * sc + flutter * 0.3, 0.55 * sc);
-      ctx.quadraticCurveTo(-0.30 * sc + flutter, 1.05 * sc,
-                           -0.10 * sc + flutter * 0.6, 1.30 * sc);
-      ctx.stroke();
-      // Thin near-white highlight crease.
-      ctx.strokeStyle = A_LIGHT;
-      ctx.lineWidth = 0.022 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.04 * sc, 0.08 * sc);
-      ctx.quadraticCurveTo(-0.14 * sc + flutter * 0.3, 0.60 * sc,
-                           -0.06 * sc + flutter * 0.4, 1.18 * sc);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Quiver on the back (drawn behind the torso, peeking out at the top).
-    {
-      const qx = -0.30 * sc;
-      const qy = (shoY + hipY) * 0.5 + 0.04 * sc;
-      ctx.save();
-      ctx.translate(qx, qy);
-      ctx.rotate(-0.18);
-      drawQuiver(0, 0, 0.40 * sc, 1.10 * sc, true);
-      ctx.restore();
-    }
-
-    // Legs.
-    const legSpread = 0.22 * sc;
-    const legSwing  = sw * 0.32 * sc * p.moving;
-    const drawSideLeg = (side, swingX, isBack) => {
-      const hipX     = side * legSpread;
-      const footX    = side * legSpread + swingX;
-      const kneeBend = side * legSpread + swingX * 0.55;
-      const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // bare peach legs (no leggings) — slimmer capsule for girly silhouette
-      ctx.fillStyle = isBack ? A_SKIN_SH : A_SKIN;
-      capsule(ctx, hipX, hipY + 0.08 * sc, kneeBend, kneeY, 0.11 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      // shin
-      ctx.fillStyle = isBack ? A_SKIN_SH : A_SKIN;
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.30 * sc, 0.095 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      // subtle peach shadow on the back of the calf
-      if (!isBack) {
-        ctx.fillStyle = `rgba(232,168,155,0.55)`;
-        capsule(ctx, kneeBend - 0.03 * sc, kneeY + 0.04 * sc,
-                     footX - 0.03 * sc, baseY - 0.32 * sc, 0.04 * sc);
-        ctx.fill();
-      }
-      // tall terracotta knee-high boot with cream cuff + lace ribbon
-      ctx.fillStyle = A_LEATHER_D;
-      rr(ctx, footX - 0.20 * sc, baseY - 0.42 * sc, 0.42 * sc, 0.42 * sc, 0.08 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // lighter terracotta inner panel
-      ctx.fillStyle = A_LEATHER;
-      rr(ctx, footX - 0.18 * sc, baseY - 0.40 * sc, 0.20 * sc, 0.34 * sc, 0.04 * sc);
-      ctx.fill();
-      // cream folded cuff at the top of the boot
-      ctx.fillStyle = A_LIGHT;
-      rr(ctx, footX - 0.22 * sc, baseY - 0.44 * sc, 0.46 * sc, 0.08 * sc, 0.03 * sc);
-      ctx.fill();
-      ctx.strokeStyle = A_DARK; ctx.lineWidth = 0.018 * sc; ctx.stroke();
-      // dark sole stripe
-      ctx.fillStyle = A_OL;
-      rr(ctx, footX - 0.22 * sc, baseY - 0.05 * sc, 0.46 * sc, 0.05 * sc, 0.02 * sc);
-      ctx.fill();
-      // small red bow ribbon at the boot cuff (girly accent)
-      ctx.fillStyle = A_RED;
-      ctx.beginPath();
-      ctx.moveTo(footX + 0.06 * sc, baseY - 0.40 * sc);
-      ctx.lineTo(footX + 0.14 * sc, baseY - 0.46 * sc);
-      ctx.lineTo(footX + 0.14 * sc, baseY - 0.34 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(footX + 0.06 * sc, baseY - 0.40 * sc);
-      ctx.lineTo(footX - 0.02 * sc, baseY - 0.46 * sc);
-      ctx.lineTo(footX - 0.02 * sc, baseY - 0.34 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = A_LIGHT;
-      ctx.beginPath();
-      ctx.arc(footX + 0.06 * sc, baseY - 0.40 * sc, 0.022 * sc, 0, TAU);
-      ctx.fill();
-      // foot-plant dust
-      const plantA = Math.max(0, (isBack ? -sw : sw)) * p.moving;
-      if (plantA > 0.15) {
-        ctx.fillStyle = `rgba(180,180,170,${0.20 * plantA})`;
-        ctx.beginPath();
-        ctx.ellipse(footX - 0.08 * sc * (isBack ? -1 : 1), baseY + 0.02 * sc,
-                    0.32 * sc * plantA, 0.09 * sc * plantA, 0, 0, TAU);
-        ctx.fill();
-      }
-    };
-    drawSideLeg(-1, -legSwing, true);
-
-    // Tunic (mint torso) — drawn behind the cloak's front but in front of
-    // the back leg.
-    ctx.beginPath();
-    ctx.moveTo(-0.36 * sc, shoY);
-    ctx.quadraticCurveTo(-0.46 * sc, (shoY + hipY) * 0.5, -0.34 * sc, hipY);
-    ctx.lineTo(0.38 * sc, hipY);
-    ctx.quadraticCurveTo(0.50 * sc, (shoY + hipY) * 0.5, 0.44 * sc, shoY);
-    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.36 * sc, shoY);
-    ctx.closePath();
-    const tg = ctx.createLinearGradient(-0.4 * sc, shoY, 0.4 * sc, hipY);
-    tg.addColorStop(0, A_MINT_HI);
-    tg.addColorStop(0.55, A_MINT);
-    tg.addColorStop(1, A_DARK);
-    ctx.fillStyle = tg;
-    ctx.fill();
-    // dark-side band (behind facing)
-    ctx.fillStyle = `rgba(0,79,87,0.45)`;
-    ctx.beginPath();
-    ctx.moveTo(-0.36 * sc, shoY);
-    ctx.quadraticCurveTo(-0.46 * sc, (shoY + hipY) * 0.5, -0.34 * sc, hipY);
-    ctx.lineTo(-0.14 * sc, hipY);
-    ctx.lineTo(-0.10 * sc, shoY - 0.02 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.1;
-    ctx.beginPath();
-    ctx.moveTo(-0.36 * sc, shoY);
-    ctx.quadraticCurveTo(-0.46 * sc, (shoY + hipY) * 0.5, -0.34 * sc, hipY);
-    ctx.lineTo(0.38 * sc, hipY);
-    ctx.quadraticCurveTo(0.50 * sc, (shoY + hipY) * 0.5, 0.44 * sc, shoY);
-    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.36 * sc, shoY);
-    ctx.closePath();
-    ctx.stroke();
-    // Lace-up centerline (cream string + four cross-stitches).
-    ctx.strokeStyle = A_LIGHT;
-    ctx.lineWidth = 0.024 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0.08 * sc, shoY + 0.04 * sc);
-    ctx.lineTo(0.06 * sc, hipY - 0.10 * sc);
-    ctx.stroke();
-    for (let i = 0; i < 4; i++) {
-      const y = lerp(shoY + 0.16 * sc, hipY - 0.18 * sc, i / 3);
-      ctx.beginPath();
-      ctx.moveTo(0.00 * sc, y);
-      ctx.lineTo(0.14 * sc, y + 0.04 * sc);
-      ctx.moveTo(0.14 * sc, y);
-      ctx.lineTo(0.00 * sc, y + 0.04 * sc);
-      ctx.stroke();
-    }
-
-    // Leather belt + buckle.
-    ctx.fillStyle = A_LEATHER_D;
-    rr(ctx, -0.38 * sc, hipY - 0.05 * sc, 0.80 * sc, 0.16 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-    ctx.fillStyle = A_LEATHER;
-    rr(ctx, -0.36 * sc, hipY - 0.02 * sc, 0.76 * sc, 0.06 * sc, 0.02 * sc);
-    ctx.fill();
-    ctx.fillStyle = A_LIGHT;
-    rr(ctx, 0.10 * sc, hipY - 0.06 * sc, 0.16 * sc, 0.18 * sc, 0.025 * sc);
-    ctx.fill();
-    ctx.strokeStyle = A_LEATHER_D; ctx.lineWidth = 0.022 * sc; ctx.stroke();
-    ctx.fillStyle = A_DARK;
-    ctx.beginPath();
-    ctx.arc(0.18 * sc, hipY + 0.04 * sc, 0.050 * sc, 0, TAU);
-    ctx.fill();
-
-    // Short flared skirt of the dress (mint with dark teal underside + cream
-    // lace hem). Ends mid-thigh so the bare legs read clearly below.
-    {
-      const hemY = hipY + 0.45 * sc;
-      ctx.fillStyle = A_DARK;
-      ctx.beginPath();
-      ctx.moveTo(-0.34 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.50 * sc + flutter * 0.3, hemY);
-      ctx.quadraticCurveTo(-0.10 * sc, hemY + 0.10 * sc,
-                           0.30 * sc + flutter * 0.2, hemY - 0.02 * sc);
-      ctx.lineTo(0.10 * sc, hipY + 0.06 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-      // mint front panel (the lit side)
-      ctx.fillStyle = A_MINT;
-      ctx.beginPath();
-      ctx.moveTo(-0.30 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.40 * sc + flutter * 0.2, hemY - 0.02 * sc);
-      ctx.quadraticCurveTo(-0.04 * sc, hemY,
-                           0.24 * sc + flutter * 0.15, hemY - 0.06 * sc);
-      ctx.lineTo(0.08 * sc, hipY + 0.06 * sc);
-      ctx.closePath();
-      ctx.fill();
-      // cream scalloped lace along the hem (3 small scallops)
-      ctx.fillStyle = A_LIGHT;
-      ctx.strokeStyle = A_DARK_D;
-      ctx.lineWidth = 0.016 * sc;
-      for (let i = 0; i < 4; i++) {
-        const t = i / 3;
-        const sx = lerp(-0.40 * sc, 0.26 * sc, t) + flutter * 0.15 * (1 - t);
-        const sy = lerp(hemY - 0.02 * sc, hemY - 0.06 * sc, t);
-        ctx.beginPath();
-        ctx.arc(sx, sy, 0.05 * sc, 0, Math.PI);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-    // Cute red bow ribbon at the waist (girly accent on top of the belt).
-    {
-      ctx.fillStyle = A_RED;
-      ctx.beginPath();
-      ctx.moveTo(0.04 * sc, hipY + 0.02 * sc);
-      ctx.lineTo(0.18 * sc, hipY - 0.08 * sc);
-      ctx.lineTo(0.18 * sc, hipY + 0.12 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0.04 * sc, hipY + 0.02 * sc);
-      ctx.lineTo(-0.10 * sc, hipY - 0.08 * sc);
-      ctx.lineTo(-0.10 * sc, hipY + 0.12 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      // bow knot
-      ctx.fillStyle = '#9a3539';
-      ctx.beginPath();
-      ctx.arc(0.04 * sc, hipY + 0.02 * sc, 0.040 * sc, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
-      ctx.fillStyle = A_LIGHT;
-      ctx.beginPath();
-      ctx.arc(0.024 * sc, hipY, 0.012 * sc, 0, TAU);
-      ctx.fill();
-    }
-
-    // Front (near) leg over the tunic hem.
-    drawSideLeg(1, legSwing, false);
-
-    // ── arms + bow ────────────────────────────────────────────────────
-    // Side-view bow geometry: the bow shoulder is the FRONT shoulder; the
-    // bow extends forward, the draw hand pulls back toward the cheek.
-    const bowShX = 0.34 * sc, bowShY = shoY + 0.14 * sc;
-    const drawShX = -0.04 * sc, drawShY = shoY + 0.18 * sc;
-    // Front-arm reach: locked forward when winding, drops slightly on
-    // release recovery.
-    const reach = lerp(0.62, 0.78, windPhase) - recoverPhase * 0.16;
-    const bowHandX = bowShX + reach * sc;
-    const bowHandY = bowShY + (windPhase * 0.02 + recoverPhase * 0.08) * sc;
-    // Draw hand: starts at front of bow at rest, pulls back to the cheek at
-    // full draw, then snaps forward on release, then dips down on recovery
-    // (reaching back to the quiver).
-    let drawHandX, drawHandY;
-    if (recoverPhase > 0.01) {
-      drawHandX = lerp(bowHandX - 0.10 * sc, -0.30 * sc, recoverPhase);
-      drawHandY = lerp(bowHandY, shoY + 0.10 * sc - 0.10 * sc * recoverPhase, recoverPhase);
-    } else if (windPhase > 0.01) {
-      drawHandX = lerp(bowHandX - 0.10 * sc, 0.04 * sc, windPhase * (1 - strikePhase));
-      drawHandY = lerp(bowHandY, headY + 0.20 * sc, windPhase * (1 - strikePhase));
-    } else {
-      drawHandX = bowHandX - 0.14 * sc;
-      drawHandY = bowHandY + 0.02 * sc;
-    }
-
-    // Back/draw upper arm (drawn first; behind torso).
-    ctx.fillStyle = A_DARK;
-    capsule(ctx, drawShX, drawShY, drawHandX, drawHandY, 0.10 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Sleeve cuff (cream).
-    ctx.save();
-    ctx.translate(drawHandX, drawHandY);
-    ctx.rotate(Math.atan2(drawHandY - drawShY, drawHandX - drawShX));
-    ctx.fillStyle = A_LEATHER;
-    rr(ctx, -0.14 * sc, -0.09 * sc, 0.26 * sc, 0.18 * sc, 0.05 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    // skin hand
-    ctx.fillStyle = A_SKIN;
-    ctx.beginPath(); ctx.arc(0.08 * sc, 0, 0.07 * sc, 0, TAU); ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    ctx.restore();
-
-    // Hood now wraps over the head. Drawn AFTER the back arm so that
-    // when the arm reaches up the elbow disappears behind the shoulder.
-    // Whole head/hood/face is scaled up around the chin pivot for chibi cuteness.
-    const hxS = 0;
-    {
-      const pY = HEAD_PIVOT_Y();
-      ctx.save();
-      ctx.translate(0, pY);
-      ctx.scale(HEAD_S, HEAD_S);
-      ctx.translate(0, -pY);
-      drawHoodSide(hxS);
-      drawFaceShadow(hxS, true);
-      drawSkinSide(hxS);
-      drawEyeSide(hxS);
-      // Two cute orange-cream side bangs peeking from the hood opening.
-      ctx.fillStyle = A_LEATHER;
-      ctx.beginPath();
-      ctx.moveTo(hxS + 0.06 * sc, headY + 0.00 * sc);
-      ctx.quadraticCurveTo(hxS + 0.16 * sc, headY + 0.10 * sc,
-                           hxS + 0.10 * sc, headY + 0.22 * sc);
-      ctx.quadraticCurveTo(hxS + 0.06 * sc, headY + 0.10 * sc,
-                           hxS + 0.04 * sc, headY + 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
-      ctx.restore();
-    }
-
-    // Bow arm (front).
-    ctx.fillStyle = A_MINT;
-    capsule(ctx, bowShX, bowShY, bowHandX, bowHandY, 0.11 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // arm shading
-    ctx.fillStyle = `rgba(0,79,87,0.35)`;
-    capsule(ctx, bowShX + 0.05 * sc, bowShY + 0.04 * sc,
-                 bowHandX + 0.05 * sc, bowHandY + 0.04 * sc, 0.05 * sc);
-    ctx.fill();
-    // leather bracer
-    ctx.save();
-    ctx.translate((bowShX + bowHandX) * 0.5, (bowShY + bowHandY) * 0.5);
-    ctx.rotate(Math.atan2(bowHandY - bowShY, bowHandX - bowShX));
-    ctx.fillStyle = A_LEATHER;
-    rr(ctx, -0.10 * sc, -0.08 * sc, 0.20 * sc, 0.16 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    ctx.strokeStyle = A_LEATHER_D; ctx.lineWidth = 0.018 * sc;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(-0.08 * sc, i * 0.045 * sc);
-      ctx.lineTo(0.08 * sc, i * 0.045 * sc);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // The bow itself (and the nocked arrow when at rest / winding up).
-    // Rotated so the limbs reach up/down in the bow's local frame.
-    const showArrow = strikePhase < 0.05 && recoverPhase < 0.15;
-    ctx.save();
-    ctx.translate(bowHandX, bowHandY);
-    drawBow(drawAmt, showArrow);
-    ctx.restore();
-
-  // ── FRONT VIEW ─────────────────────────────────────────────────────────
-  } else if (p.view === 'front') {
+  if (p.view === 'front') {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.05 * sc;
     ctx.translate(sway, 0);
 
@@ -4619,7 +3217,7 @@ export function markArcher(id) {
 // Polished 2.5D Goblin — small, mischievous, scampering Clash-Royale-style
 // dagger goblin. Engine spawns 4 per deploy; each unit instance gets its own
 // rig via getAnim() so the four de-sync naturally on p.phase. View-aware
-// (side / front / back) with a three-phase dagger-stab attack (windup pulls
+// (front / back) with a three-phase dagger-stab attack (windup pulls
 // the dagger back behind the head, strike lunges with a diagonal slash and
 // red-tipped motion smear, recovery snaps back). Big floppy ears wobble,
 // the head tilts side-to-side, the body bounces low-and-fast on a hunched
@@ -4941,39 +3539,6 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
   // ── helper: toothy grin (cream fangs on a dark mouth slit) ─────────────
   // `width` controls grin width; widens on windup. The lower fangs always
   // peek out, even at rest, because goblins are goblins.
-  const drawGrinSide = (cx, cy) => {
-    const grinW = 0.20 * sc * (1 + windPhase * 0.20);
-    // dark mouth slit
-    ctx.fillStyle = G_DARK;
-    rr(ctx, cx - grinW * 0.08, cy - 0.020 * sc, grinW, 0.060 * sc, 0.012 * sc);
-    ctx.fill();
-    // tongue tip (visible during idle flick OR on a wide windup grin)
-    const tw = Math.max(tongueOut, windPhase * 0.30);
-    if (tw > 0.05) {
-      ctx.fillStyle = G_RED;
-      ctx.beginPath();
-      ctx.ellipse(cx + grinW * 0.40, cy + 0.012 * sc, 0.040 * sc * tw, 0.020 * sc * tw, 0, 0, TAU);
-      ctx.fill();
-    }
-    // upper fang (small triangle hanging down at the front of the slit)
-    ctx.fillStyle = G_CREAM;
-    ctx.beginPath();
-    ctx.moveTo(cx + grinW * 0.55, cy - 0.018 * sc);
-    ctx.lineTo(cx + grinW * 0.70, cy + 0.020 * sc);
-    ctx.lineTo(cx + grinW * 0.78, cy - 0.018 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.35; ctx.stroke();
-    // lower fang (sticks up from the bottom of the slit)
-    ctx.fillStyle = G_CREAM;
-    ctx.beginPath();
-    ctx.moveTo(cx + grinW * 0.20, cy + 0.040 * sc);
-    ctx.lineTo(cx + grinW * 0.32, cy + 0.000 * sc);
-    ctx.lineTo(cx + grinW * 0.42, cy + 0.040 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.35; ctx.stroke();
-  };
   const drawGrinFront = (cx, cy) => {
     const grinW = 0.28 * sc * (1 + windPhase * 0.18);
     // dark mouth slit
@@ -5013,373 +3578,7 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
     }
   };
 
-  // ────────────────────────────────────────────────────────────────────────
-  // ── SIDE VIEW ──────────────────────────────────────────────────────────
-  // ────────────────────────────────────────────────────────────────────────
-  if (p.view === 'side') {
-
-    // Trailing sash flutter (drawn first so it sits behind the body).
-    {
-      const tC = (p.t + p.phase) * 4.8;
-      const flut = (Math.sin(tC) * (0.05 + p.moving * 0.18) +
-                    Math.sin(tC * 1.7) * 0.030) * sc;
-      ctx.fillStyle = G_RED;
-      ctx.beginPath();
-      ctx.moveTo(-0.10 * sc, hipY - 0.02 * sc);
-      ctx.lineTo(-0.30 * sc + flut, hipY + 0.32 * sc);
-      ctx.lineTo(-0.18 * sc + flut * 0.5, hipY + 0.36 * sc);
-      ctx.lineTo(-0.06 * sc, hipY + 0.04 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-      ctx.fillStyle = `rgba(56,102,65,0.55)`;
-      ctx.beginPath();
-      ctx.moveTo(-0.10 * sc, hipY - 0.02 * sc);
-      ctx.lineTo(-0.20 * sc + flut * 0.6, hipY + 0.20 * sc);
-      ctx.lineTo(-0.14 * sc + flut * 0.3, hipY + 0.22 * sc);
-      ctx.lineTo(-0.08 * sc, hipY + 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Legs (back leg first; front leg later over the tunic hem).
-    const legSpread = 0.16 * sc;
-    const legSwing  = sw * 0.26 * sc * p.moving;
-    const drawSideLeg = (side, swingX, isBack) => {
-      const hipX     = side * legSpread;
-      const footX    = side * legSpread + swingX;
-      const kneeBend = side * legSpread + swingX * 0.55;
-      const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // Thigh (mid green; back leg is forest shadow).
-      ctx.fillStyle = isBack ? G_DARK : G_MID;
-      capsule(ctx, hipX, hipY, kneeBend, kneeY, 0.110 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // Shin.
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.02 * sc, 0.090 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // Lime highlight stripe down the front of the shin (only on the
-      // forward/visible leg).
-      if (!isBack) {
-        ctx.fillStyle = G_LIME;
-        capsule(ctx, kneeBend + 0.03 * sc, kneeY,
-                     footX + 0.03 * sc, baseY - 0.08 * sc, 0.024 * sc);
-        ctx.fill();
-      }
-      // Bandaged foot (cream wrap, jagged hem).
-      ctx.fillStyle = G_CREAM;
-      rr(ctx, footX - 0.18 * sc, baseY - 0.16 * sc, 0.36 * sc, 0.18 * sc, 0.05 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      // Bandage cross-stitches.
-      ctx.strokeStyle = G_DARK; ctx.lineWidth = 0.020 * sc;
-      for (let i = 0; i < 2; i++) {
-        const fx = footX - 0.10 * sc + i * 0.14 * sc;
-        ctx.beginPath();
-        ctx.moveTo(fx - 0.04 * sc, baseY - 0.16 * sc);
-        ctx.lineTo(fx + 0.04 * sc, baseY - 0.02 * sc);
-        ctx.moveTo(fx + 0.04 * sc, baseY - 0.16 * sc);
-        ctx.lineTo(fx - 0.04 * sc, baseY - 0.02 * sc);
-        ctx.stroke();
-      }
-      // Toe tip — small green claw poking out of the bandage.
-      ctx.fillStyle = G_MID;
-      ctx.beginPath();
-      ctx.moveTo(footX + 0.18 * sc, baseY - 0.06 * sc);
-      ctx.lineTo(footX + 0.24 * sc, baseY - 0.02 * sc);
-      ctx.lineTo(footX + 0.18 * sc, baseY + 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
-      // Foot-plant dust (TINY puffs — goblins are light).
-      const plantA = Math.max(0, (isBack ? -sw : sw)) * p.moving;
-      if (plantA > 0.18) {
-        ctx.fillStyle = `rgba(180,180,170,${0.18 * plantA})`;
-        ctx.beginPath();
-        ctx.ellipse(footX - 0.06 * sc * (isBack ? -1 : 1), baseY + 0.02 * sc,
-                    0.22 * sc * plantA, 0.06 * sc * plantA, 0, 0, TAU);
-        ctx.fill();
-      }
-    };
-    drawSideLeg(-1, -legSwing, true);
-
-    // Tunic — ragged cream sack-cloth with jagged hem.
-    {
-      ctx.fillStyle = G_CREAM;
-      ctx.beginPath();
-      ctx.moveTo(-0.30 * sc, shoY + 0.02 * sc);
-      ctx.quadraticCurveTo(-0.40 * sc, (shoY + hipY) * 0.5, -0.32 * sc, hipY + 0.06 * sc);
-      // jagged hem (zigzag)
-      ctx.lineTo(-0.22 * sc, hipY + 0.18 * sc);
-      ctx.lineTo(-0.12 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.02 * sc, hipY + 0.20 * sc);
-      ctx.lineTo(0.10 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(0.22 * sc, hipY + 0.20 * sc);
-      ctx.lineTo(0.32 * sc, hipY + 0.06 * sc);
-      ctx.quadraticCurveTo(0.42 * sc, (shoY + hipY) * 0.5, 0.34 * sc, shoY + 0.02 * sc);
-      ctx.quadraticCurveTo(0, shoY - 0.10 * sc, -0.30 * sc, shoY + 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-      // Bold outline.
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.05;
-      ctx.stroke();
-      // Back-side shade band.
-      ctx.fillStyle = `rgba(56,102,65,0.35)`;
-      ctx.beginPath();
-      ctx.moveTo(-0.30 * sc, shoY + 0.02 * sc);
-      ctx.quadraticCurveTo(-0.40 * sc, (shoY + hipY) * 0.5, -0.32 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.14 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.10 * sc, shoY + 0.00 * sc);
-      ctx.closePath();
-      ctx.fill();
-      // Cloth fold lines (dark-green stitches running down the front).
-      ctx.strokeStyle = G_DARK; ctx.lineWidth = 0.022 * sc;
-      ctx.beginPath();
-      ctx.moveTo(0.04 * sc, shoY + 0.06 * sc);
-      ctx.quadraticCurveTo(0.02 * sc, (shoY + hipY) * 0.5, 0.04 * sc, hipY + 0.04 * sc);
-      ctx.stroke();
-      // A patchy stitched square on the chest.
-      ctx.strokeStyle = G_DARK; ctx.lineWidth = 0.018 * sc;
-      ctx.setLineDash([0.030 * sc, 0.024 * sc]);
-      ctx.beginPath();
-      ctx.rect(-0.18 * sc, shoY + 0.10 * sc, 0.14 * sc, 0.18 * sc);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // Rope sash (mid green) tied at the waist.
-    ctx.fillStyle = G_DARK;
-    rr(ctx, -0.34 * sc, hipY + 0.02 * sc, 0.68 * sc, 0.080 * sc, 0.020 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.6; ctx.stroke();
-    ctx.fillStyle = G_MID;
-    rr(ctx, -0.32 * sc, hipY + 0.04 * sc, 0.64 * sc, 0.040 * sc, 0.015 * sc);
-    ctx.fill();
-    // Knot bump on the side.
-    ctx.fillStyle = G_DARK;
-    ctx.beginPath();
-    ctx.arc(0.22 * sc, hipY + 0.06 * sc, 0.060 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-
-    // Front leg (over the tunic hem).
-    drawSideLeg(1, legSwing, false);
-
-    // ── arms + dagger ────────────────────────────────────────────────────
-    // BACK arm (off-hand): rests at the side at idle, raises slightly on
-    // strike to keep the silhouette balanced.
-    {
-      const offShX = -0.16 * sc, offShY = shoY + 0.04 * sc;
-      const offHandAng = -2.05 + windPhase * -0.20 + swingPhase * -0.10;
-      const offHandX = offShX + Math.cos(offHandAng) * 0.42 * sc;
-      const offHandY = offShY + Math.sin(offHandAng) * 0.42 * sc;
-      ctx.fillStyle = G_MID;
-      capsule(ctx, offShX, offShY, offHandX, offHandY, 0.080 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // Lime highlight stripe along the top.
-      ctx.fillStyle = G_LIME;
-      capsule(ctx, offShX, offShY - 0.02 * sc, offHandX, offHandY - 0.02 * sc, 0.020 * sc);
-      ctx.fill();
-      ctx.save();
-      ctx.translate(offHandX, offHandY);
-      ctx.rotate(offHandAng);
-      drawHand();
-      ctx.restore();
-    }
-
-    // HEAD (over the back arm, under the dagger arm).
-    {
-      // Apply head tilt (side-to-side bob).
-      ctx.save();
-      ctx.translate(0, headY);
-      ctx.rotate(headTilt * 0.6);
-      // Big round head.
-      ctx.fillStyle = G_MID;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, headR * 1.04, headR * 0.96, 0, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.1; ctx.stroke();
-      // Back-of-head shadow (forest green).
-      ctx.fillStyle = `rgba(56,102,65,0.55)`;
-      ctx.beginPath();
-      ctx.ellipse(-headR * 0.45, 0.06 * sc, headR * 0.55, headR * 0.70, 0, 0, TAU);
-      ctx.fill();
-      // Top-of-head lime highlight (light from upper-left).
-      ctx.fillStyle = G_LIME;
-      ctx.beginPath();
-      ctx.ellipse(-headR * 0.10, -headR * 0.55, headR * 0.55, headR * 0.18, 0, 0, TAU);
-      ctx.fill();
-      // Cheek highlight.
-      ctx.fillStyle = G_LIME;
-      ctx.beginPath();
-      ctx.arc(headR * 0.30, headR * 0.20, headR * 0.16, 0, TAU);
-      ctx.fill();
-
-      // Visible ear (back ear, sweeping up-and-back). Wobble + twitch.
-      drawEar(-headR * 0.08, -headR * 0.10, -1, -0.35 + earWob * 0.5 + earTwitch * 0.4);
-
-      // Small gold-like (lime) hoop earring dangling from the ear lobe.
-      ctx.strokeStyle = G_LIME; ctx.lineWidth = 0.022 * sc;
-      ctx.beginPath();
-      ctx.arc(-headR * 0.16, headR * 0.18, 0.040 * sc, 0, TAU);
-      ctx.stroke();
-
-      // Red headband across the forehead (with a tail flapping behind).
-      ctx.fillStyle = G_RED;
-      ctx.beginPath();
-      ctx.moveTo(-headR * 0.95, -headR * 0.20);
-      ctx.quadraticCurveTo(0, -headR * 0.42, headR * 0.95, -headR * 0.15);
-      ctx.lineTo(headR * 0.92, -headR * 0.05);
-      ctx.quadraticCurveTo(0, -headR * 0.30, -headR * 0.95, -headR * 0.08);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-      // Bandana tail flapping at the back.
-      const tC = (p.t + p.phase) * 5.0;
-      const tflut = Math.sin(tC) * (0.05 + p.moving * 0.10) * sc;
-      ctx.fillStyle = G_RED;
-      ctx.beginPath();
-      ctx.moveTo(-headR * 0.90, -headR * 0.20);
-      ctx.lineTo(-headR * 1.50 + tflut, -headR * 0.05);
-      ctx.lineTo(-headR * 1.40 + tflut * 0.7, headR * 0.10);
-      ctx.lineTo(-headR * 0.85, -headR * 0.08);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.6; ctx.stroke();
-
-      // Big nose (mid-green nub sticking out).
-      ctx.fillStyle = G_MID;
-      ctx.beginPath();
-      ctx.moveTo(headR * 0.62, headR * 0.04);
-      ctx.quadraticCurveTo(headR * 0.95, headR * 0.10, headR * 0.86, headR * 0.30);
-      ctx.lineTo(headR * 0.60, headR * 0.30);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-      // Nose tip highlight.
-      ctx.fillStyle = G_LIME;
-      ctx.beginPath();
-      ctx.arc(headR * 0.78, headR * 0.16, headR * 0.08, 0, TAU);
-      ctx.fill();
-
-      // Eye (single visible — side profile).
-      drawEye(headR * 0.32, -headR * 0.02, 1);
-
-      // Brow ridge above the eye (small lime arch — predator focus on attack).
-      ctx.strokeStyle = G_DARK;
-      ctx.lineWidth = 0.030 * sc;
-      ctx.beginPath();
-      ctx.moveTo(headR * 0.18, -headR * 0.16 + windPhase * 0.04);
-      ctx.quadraticCurveTo(headR * 0.36, -headR * 0.22 + windPhase * 0.06,
-                           headR * 0.50, -headR * 0.10 + windPhase * 0.04);
-      ctx.stroke();
-
-      // Grin (centered on the lower face).
-      drawGrinSide(headR * 0.32, headR * 0.36);
-
-      ctx.restore();
-    }
-
-    // DAGGER ARM (front, lead hand). Full three-phase swing geometry.
-    {
-      const restAng = -0.10;            // arm forward, slightly down
-      const windAng = -2.40;            // pulled back behind the head
-      const hitAng  =  0.40;            // thrust forward (slightly down)
-      let armAng;
-      if (p.atk > 0) {
-        if (s < 0.30)       armAng = lerp(restAng, windAng, easeOut(s / 0.30));
-        else if (s < 0.62)  armAng = lerp(windAng, hitAng, easeOut((s - 0.30) / 0.32));
-        else                armAng = lerp(hitAng,  restAng, easeInOut((s - 0.62) / 0.38));
-      } else {
-        armAng = restAng;
-      }
-      const shX  = 0.18 * sc, shYY = shoY + 0.04 * sc;
-      const armL = 0.46 * sc;
-      const handX = shX + Math.cos(armAng) * armL;
-      const handY = shYY + Math.sin(armAng) * armL;
-
-      // Motion-smear arc (during strike — ghost blade trail).
-      if (swingPhase > 0.05 && p.atk > 0) {
-        const trailStart = lerp(windAng, hitAng,
-                                easeOut(Math.max(0, (s - 0.30) / 0.32 - 0.30)));
-        ctx.strokeStyle = `rgba(242,232,207,${0.42 * swingPhase})`;
-        ctx.lineWidth = 0.18 * sc;
-        ctx.beginPath();
-        ctx.arc(shX, shYY, armL + 0.30 * sc, trailStart, armAng, false);
-        ctx.stroke();
-        // Red-tinted ghost streak (the bloody tip's history).
-        ctx.strokeStyle = `rgba(188,71,73,${0.45 * swingPhase})`;
-        ctx.lineWidth = 0.06 * sc;
-        ctx.beginPath();
-        ctx.arc(shX, shYY, armL + 0.42 * sc, trailStart, armAng, false);
-        ctx.stroke();
-      }
-
-      // Arm (mid-green capsule with a lime top highlight).
-      ctx.fillStyle = G_MID;
-      capsule(ctx, shX, shYY, handX, handY, 0.090 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.fillStyle = G_LIME;
-      capsule(ctx, shX, shYY - 0.02 * sc, handX, handY - 0.02 * sc, 0.024 * sc);
-      ctx.fill();
-      // Bandage wrap around the wrist.
-      ctx.save();
-      ctx.translate(handX - Math.cos(armAng) * 0.10 * sc,
-                    handY - Math.sin(armAng) * 0.10 * sc);
-      ctx.rotate(armAng + Math.PI / 2);
-      ctx.fillStyle = G_CREAM;
-      rr(ctx, -0.12 * sc, -0.045 * sc, 0.24 * sc, 0.090 * sc, 0.030 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-      ctx.strokeStyle = G_DARK; ctx.lineWidth = 0.018 * sc;
-      for (let i = -1; i <= 1; i++) {
-        ctx.beginPath();
-        ctx.moveTo(-0.10 * sc, i * 0.024 * sc);
-        ctx.lineTo(0.10 * sc, i * 0.024 * sc);
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // Hand + dagger.
-      ctx.save();
-      ctx.translate(handX, handY);
-      ctx.rotate(armAng);
-      // Hand sits at the dagger's grip (dagger origin is the grip).
-      ctx.save();
-      ctx.rotate(-armAng);
-      drawHand();
-      ctx.restore();
-      drawDagger(strikePop);
-      ctx.restore();
-
-      // Stab-impact pop (small star + cream cross-shine at the blade tip
-      // during strike).
-      if (strikePop > 0.10) {
-        const tipX = handX + Math.cos(armAng) * 0.46 * sc;
-        const tipY = handY + Math.sin(armAng) * 0.46 * sc;
-        ctx.fillStyle = `rgba(242,232,207,${0.85 * strikePop})`;
-        const rs = 0.14 * sc * strikePop;
-        ctx.beginPath();
-        ctx.moveTo(tipX - rs, tipY);
-        ctx.lineTo(tipX, tipY - rs);
-        ctx.lineTo(tipX + rs, tipY);
-        ctx.lineTo(tipX, tipY + rs);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = `rgba(188,71,73,${0.70 * strikePop})`;
-        ctx.beginPath();
-        ctx.arc(tipX, tipY, 0.05 * sc * strikePop, 0, TAU);
-        ctx.fill();
-      }
-    }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // ── FRONT VIEW ─────────────────────────────────────────────────────────
-  // ────────────────────────────────────────────────────────────────────────
-  } else if (p.view === 'front') {
+  if (p.view === 'front') {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.04 * sc;
     ctx.translate(sway, 0);
 
@@ -6119,7 +4318,7 @@ export function drawMinion(ctx, gx, gy, tile, p) {
   // baseAng   = nominal pitch of the wing humerus (rad; 0 = +x, -PI/2 = up)
   // span      = wing length (sc-scaled)
   // openness  = 0..1 (how far it spreads; 0 = folded, 1 = full extension)
-  // far       = if true, dim slightly (used for the back wing in side view)
+  // far       = if true, dim slightly (used for the partially-hidden far wing)
   const drawWing = (cx, cy, baseAng, span, openness, far) => {
     const alphaMul = far ? 0.65 : 1;
     const tipL  = span;
@@ -6496,112 +4695,7 @@ export function drawMinion(ctx, gx, gy, tile, p) {
     }
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ── VIEW DISPATCH ─────────────────────────────────────────────────────
-  // ════════════════════════════════════════════════════════════════════════
-  if (p.view === 'side') {
-    // ───── SIDE VIEW ───────────────────────────────────────────────────
-    // Profile body, one wing big on the near side, one peeks behind the
-    // body, tail dangles back, one visible horn (front), single glowing
-    // eye in profile, two front fangs.
-
-    // FAR wing (drawn first so it's occluded behind the body).
-    {
-      const openness = 0.55 + flap * 0.20;
-      drawWing(-0.18 * sc, -0.22 * sc, -2.00 + flap * 0.20,
-               0.95 * sc, openness, true);
-    }
-
-    // Tail (in profile, sweeping behind = local -x).
-    drawTail(-0.18 * sc, 0.30 * sc, 0.60 * sc, -1, tailWag);
-
-    // Body — shadow on the +x side (the bat is lit from upper-left).
-    drawBody(1);
-
-    // Tiny clawed leg tucked under the body (profile single leg).
-    {
-      ctx.fillStyle = M_NAVY;
-      capsule(ctx, 0.04 * sc, 0.32 * sc, 0.12 * sc, 0.46 * sc, 0.045 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-      ctx.fillStyle = M_LIGHT;
-      for (const k of [-1, 0, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(0.10 * sc + k * 0.025 * sc, 0.48 * sc);
-        ctx.lineTo(0.10 * sc + k * 0.025 * sc + 0.020 * sc, 0.56 * sc);
-        ctx.lineTo(0.10 * sc + k * 0.025 * sc - 0.005 * sc, 0.50 * sc);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-
-    // Head + face (with its own lunge offset).
-    ctx.save();
-    ctx.translate(headDX, headDY);
-    drawHead(true);
-
-    // Profile ear (one visible, swept back).
-    {
-      const eAng = -0.30 + earTwitch;
-      ctx.fillStyle = M_NAVY;
-      ctx.beginPath();
-      ctx.moveTo(-headR * 0.40, headCy - headR * 0.70);
-      ctx.quadraticCurveTo(-headR * 0.90, headCy - headR * 1.10 + eAng * 0.12 * sc,
-                           -headR * 0.45, headCy - headR * 0.30);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-      ctx.fillStyle = M_SLATE;
-      ctx.beginPath();
-      ctx.moveTo(-headR * 0.45, headCy - headR * 0.70);
-      ctx.quadraticCurveTo(-headR * 0.75, headCy - headR * 0.95 + eAng * 0.10 * sc,
-                           -headR * 0.50, headCy - headR * 0.35);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Near horn (front of head). The other horn is occluded; show a small
-    // back-horn root peeking up behind the brow.
-    drawHorn(headR * 0.30, headCy - headR * 0.70, 1, -0.30);
-    ctx.fillStyle = M_NAVY;
-    ctx.beginPath();
-    ctx.moveTo(-headR * 0.20, headCy - headR * 0.80);
-    ctx.quadraticCurveTo(-headR * 0.05, headCy - headR * 1.20,
-                         headR * 0.04, headCy - headR * 0.85);
-    ctx.lineTo(-headR * 0.12, headCy - headR * 0.75);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-
-    // Single profile eye.
-    drawEye(headR * 0.40, headCy - headR * 0.10, 1);
-
-    // Mouth — opens with the attack. Two fangs always visible.
-    {
-      const mw = headR * (0.20 + mouthOpen * 0.40);
-      const mh = headR * (0.06 + mouthOpen * 0.30);
-      const mcx = headR * 0.70;
-      const mcy = headCy + headR * 0.30;
-      ctx.fillStyle = M_INK;
-      ctx.beginPath();
-      ctx.ellipse(mcx, mcy, mw, mh, 0, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
-      drawFang(mcx - mw * 0.40, mcy - mh * 0.50, 0.030 * sc, 0.070 * sc);
-      drawFang(mcx + mw * 0.10, mcy - mh * 0.50, 0.030 * sc, 0.085 * sc);
-      drawSpitPuff(mcx, mcy);
-    }
-
-    ctx.restore();
-
-    // NEAR wing (drawn last so it sits in front of the body).
-    {
-      const openness = 0.70 + flap * 0.25;
-      drawWing(0.06 * sc, -0.18 * sc, -1.55 + flap * 0.40,
-               1.05 * sc, openness, false);
-    }
-
-  } else if (p.view === 'front') {
+  if (p.view === 'front') {
     // ───── FRONT VIEW ──────────────────────────────────────────────────
     // Body facing camera, BOTH wings spread symmetrically, two horns, two
     // glowing eyes, fangs grinning.
@@ -6929,7 +5023,7 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   const breath = Math.sin((p.t + p.phase) * 2.1) * (1 - p.moving) * 0.018;
   const lift = (bob * 0.32 + breath) * sc;
   const headBob = Math.sin(p.gait * TAU * 2) * p.moving * 0.014 * sc;
-  // Coat tail flutter (drives the trailing hem in side/back views).
+  // Coat tail flutter (drives the trailing hem in the back view).
   const tC = (p.t + p.phase) * 4.6;
   const flutter = (Math.sin(tC) * (0.07 + p.moving * 0.20) +
                    Math.sin(tC * 1.7) * 0.045) * sc;
@@ -7029,235 +5123,300 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   const OW = 0.065 * sc;
 
   // ── reusable: the musket ──────────────────────────────────────────────
-  // Drawn at the BACK-HAND grip; canonical orientation is barrel pointing
-  // along local -y (UP). Caller rotates by `armAng + π/2` so armAng matches
-  // the firing direction in local space (+x = forward). Length stays in
-  // sc-units so the gun scales with the figure.
-  // Bigger, cooler version: longer barrel, thicker gold engraved bands,
-  // sky-blue stock with gold filigree heart, a bayonet at the muzzle, and
-  // a brass starburst on the lock plate.
-  const L = 2.10 * sc;                    // total length (was 1.65)
+  // A proper flintlock rifle silhouette — walnut wood stock (butt + wrist
+  // + forestock), long blued-steel barrel above the forestock, lock plate
+  // with an S-curved hammer on the side, gold trigger guard, iron sights,
+  // brass barrel bands + muzzle cap and a triangular bayonet. Drawn at the
+  // BACK-HAND grip; canonical orientation has the barrel pointing along
+  // local -y (UP) and the butt extending along +y (DOWN). The caller
+  // rotates the canvas by `armAng + π/2` so the barrel aligns with the
+  // desired world firing direction (+x is forward).
+  const L = 2.10 * sc;                    // total length
   const drawMusket = () => {
-    const barrelW = 0.095 * sc;
-    const stockW  = 0.165 * sc;
+    // Palette — walnut wood + blued steel + brass furniture.
+    const WOOD     = '#7a4d24';
+    const WOOD_HI  = '#b07d44';
+    const WOOD_SH  = '#3f2510';
+    const STEEL    = '#475663';
+    const STEEL_HI = '#aebcc6';
+    const STEEL_SH = '#1d262f';
+    const BORE     = '#08090c';
 
-    // ── shoulder stock (curvy "swan-neck" butt for a cute silhouette) ─
-    ctx.fillStyle = MK_SKY;
+    // Geometric anchors (canonical frame; barrel along -y, butt along +y).
+    const barrelW       = 0.085 * sc;
+    const muzzleY       = -L * 0.50;          // tip of barrel
+    const breechY       = -L * 0.04;          // bottom of barrel / top of action
+    const forestockTopY = -L * 0.43;          // wood ends before the muzzle
+    const forestockHW   = 0.115 * sc;         // forestock half-width
+    const wristTopY     =  0.04 * sc;         // top of wrist (just under action)
+    const wristBotY     =  0.20 * sc;         // bottom of wrist (top of butt)
+    const wristHW       =  0.065 * sc;        // narrow wrist half-width
+    const buttBotY      =  L * 0.47;          // bottom of butt pad
+    const buttHW        =  0.165 * sc;        // butt widest half-width
+    const buttCombY     =  0.16 * sc;         // comb (top of butt, sloped)
+
+    // ── 1. WOODEN STOCK ─────────────────────────────────────────────────
+    // Single walnut silhouette: butt pad → curved comb → wrist → forestock.
+    ctx.fillStyle = WOOD;
     ctx.beginPath();
-    ctx.moveTo(-stockW * 0.55, 0.05 * sc);
-    ctx.lineTo( stockW * 0.65, 0.05 * sc);
-    ctx.quadraticCurveTo(stockW * 0.55, L * 0.18, stockW * 0.45, L * 0.32);
-    ctx.quadraticCurveTo(stockW * 0.20, L * 0.46, -stockW * 0.10, L * 0.48);
-    ctx.quadraticCurveTo(-stockW * 0.55, L * 0.40, -stockW * 0.62, L * 0.16);
+    ctx.moveTo(buttHW * 0.50, buttBotY);
+    ctx.quadraticCurveTo(buttHW * 0.35, buttCombY + 0.05 * sc,
+                         wristHW * 1.00, wristBotY);
+    ctx.quadraticCurveTo(wristHW * 0.85, wristTopY + 0.04 * sc,
+                         wristHW * 0.80, wristTopY);
+    ctx.lineTo(forestockHW * 0.85, wristTopY - 0.02 * sc);
+    ctx.lineTo(forestockHW, breechY);
+    ctx.lineTo(forestockHW * 0.96, forestockTopY);
+    ctx.quadraticCurveTo(0, forestockTopY - 0.025 * sc,
+                         -forestockHW * 0.96, forestockTopY);
+    ctx.lineTo(-forestockHW, breechY);
+    ctx.lineTo(-forestockHW * 0.85, wristTopY - 0.02 * sc);
+    ctx.lineTo(-wristHW * 0.80, wristTopY);
+    ctx.quadraticCurveTo(-wristHW * 0.95, wristTopY + 0.06 * sc,
+                         -wristHW * 1.10, wristBotY);
+    ctx.quadraticCurveTo(-buttHW * 0.70, buttCombY + 0.02 * sc,
+                         -buttHW * 1.00, buttCombY + 0.20 * sc);
+    ctx.quadraticCurveTo(-buttHW * 1.05, buttBotY * 0.78,
+                         -buttHW * 0.78, buttBotY);
+    ctx.quadraticCurveTo(0, buttBotY + 0.05 * sc, buttHW * 0.50, buttBotY);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-    // Darker teal grain band along the underside of the stock.
-    ctx.fillStyle = `rgba(33,158,188,0.55)`;
+
+    // Lit-side wood highlight (front edge of the butt + forestock).
+    ctx.fillStyle = WOOD_HI;
     ctx.beginPath();
-    ctx.moveTo( stockW * 0.30, 0.07 * sc);
-    ctx.lineTo( stockW * 0.60, 0.10 * sc);
-    ctx.quadraticCurveTo(stockW * 0.42, L * 0.30, stockW * 0.18, L * 0.40);
-    ctx.lineTo( stockW * 0.10, L * 0.32);
+    ctx.moveTo(buttHW * 0.18, buttCombY + 0.10 * sc);
+    ctx.quadraticCurveTo(buttHW * 0.55, buttBotY * 0.74,
+                         buttHW * 0.32, buttBotY - 0.03 * sc);
+    ctx.lineTo(buttHW * 0.12, buttBotY - 0.03 * sc);
+    ctx.quadraticCurveTo(buttHW * 0.02, buttBotY * 0.74,
+                         -0.005 * sc, buttCombY + 0.18 * sc);
     ctx.closePath();
     ctx.fill();
-    // Light sky-blue highlight catch along the upper edge of the stock.
-    ctx.fillStyle = MK_SKY_HI;
+    ctx.fillRect(forestockHW * 0.55, forestockTopY + 0.02 * sc,
+                 forestockHW * 0.30, (breechY - forestockTopY) - 0.04 * sc);
+
+    // Dark-side wood shadow (back edge of butt + forestock).
+    ctx.fillStyle = WOOD_SH;
     ctx.beginPath();
-    ctx.moveTo(-stockW * 0.48, 0.06 * sc);
-    ctx.lineTo(-stockW * 0.20, 0.08 * sc);
-    ctx.quadraticCurveTo(-stockW * 0.30, L * 0.30, -stockW * 0.50, L * 0.34);
+    ctx.moveTo(-buttHW * 0.78, buttCombY + 0.18 * sc);
+    ctx.quadraticCurveTo(-buttHW * 1.00, buttBotY * 0.78,
+                         -buttHW * 0.74, buttBotY - 0.02 * sc);
+    ctx.lineTo(-buttHW * 0.42, buttBotY - 0.02 * sc);
+    ctx.quadraticCurveTo(-buttHW * 0.60, buttBotY * 0.76,
+                         -buttHW * 0.40, buttCombY + 0.14 * sc);
     ctx.closePath();
     ctx.fill();
-    // Gold filigree heart engraved on the stock — a girly signature.
-    {
-      ctx.save();
-      ctx.translate(-stockW * 0.10, L * 0.22);
-      const hr = 0.060 * sc;
-      ctx.fillStyle = MK_GOLD;
-      ctx.beginPath();
-      ctx.arc(-hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc( hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-hr * 0.95, 0);
-      ctx.lineTo(0, hr * 1.10);
-      ctx.lineTo( hr * 0.95, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.016 * sc;
-      ctx.beginPath();
-      ctx.arc(-hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc( hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(-hr * 0.95, 0);
-      ctx.lineTo(0, hr * 1.10);
-      ctx.lineTo( hr * 0.95, 0);
-      ctx.stroke();
-      ctx.fillStyle = MK_GOLD_HI;
-      ctx.beginPath();
-      ctx.arc(-hr * 0.50, -hr * 0.25, hr * 0.18, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-    }
-    // Decorative gold rivets along the stock side.
-    for (let i = 0; i < 3; i++) {
-      const ry = L * (0.10 + i * 0.10);
-      ctx.fillStyle = MK_GOLD;
-      ctx.beginPath();
-      ctx.arc(-stockW * 0.40, ry, 0.020 * sc, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.010 * sc; ctx.stroke();
-      ctx.fillStyle = MK_GOLD_HI;
-      ctx.beginPath();
-      ctx.arc(-stockW * 0.41, ry - 0.005 * sc, 0.008 * sc, 0, TAU);
-      ctx.fill();
-    }
+    ctx.fillRect(-forestockHW * 0.95, forestockTopY + 0.02 * sc,
+                 forestockHW * 0.18, (breechY - forestockTopY) - 0.04 * sc);
 
-    // ── larger trigger guard (gold ornamental curve) ──
-    ctx.strokeStyle = MK_GOLD;
-    ctx.lineWidth = 0.034 * sc;
+    // ── 2. STEEL BUTT PLATE (dark plate at the very back) ──────────────
+    ctx.fillStyle = STEEL_SH;
     ctx.beginPath();
-    ctx.arc(-0.005 * sc, 0.10 * sc, 0.080 * sc, 0, Math.PI);
-    ctx.stroke();
-    ctx.strokeStyle = MK_NAVY_D;
-    ctx.lineWidth = 0.014 * sc;
-    ctx.beginPath();
-    ctx.arc(-0.005 * sc, 0.10 * sc, 0.080 * sc, 0, Math.PI);
-    ctx.stroke();
-    // Trigger (small dark sliver hanging down).
-    ctx.fillStyle = MK_NAVY_D;
-    ctx.fillRect(-0.014 * sc, 0.10 * sc, 0.028 * sc, 0.050 * sc);
-
-    // ── lock plate (gold rectangle with a brass starburst) ──
-    ctx.fillStyle = MK_NAVY;
-    rr(ctx, -0.060 * sc, -0.06 * sc, 0.120 * sc, 0.13 * sc, 0.02 * sc);
+    ctx.moveTo(-buttHW * 0.76, buttBotY - 0.02 * sc);
+    ctx.quadraticCurveTo(0, buttBotY + 0.04 * sc,
+                         buttHW * 0.48, buttBotY - 0.02 * sc);
+    ctx.lineTo(buttHW * 0.42, buttBotY - 0.08 * sc);
+    ctx.quadraticCurveTo(0, buttBotY - 0.04 * sc,
+                         -buttHW * 0.70, buttBotY - 0.08 * sc);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
-    // Gold starburst medallion on the lock plate.
-    {
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.4; ctx.stroke();
+    ctx.fillStyle = STEEL_HI;
+    ctx.fillRect(-buttHW * 0.55, buttBotY - 0.06 * sc, buttHW * 0.95, 0.012 * sc);
+
+    // ── 3. STEEL BARREL ─────────────────────────────────────────────────
+    // Long blued-steel tube from muzzle to breech, set ON TOP of the wood
+    // forestock so the barrel + forestock read as separate elements.
+    ctx.fillStyle = STEEL;
+    rr(ctx, -barrelW * 0.50, muzzleY,
+        barrelW, (breechY - muzzleY) + 0.005 * sc, barrelW * 0.18);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.65; ctx.stroke();
+    // Bright catch line down the lit side of the barrel.
+    ctx.fillStyle = STEEL_HI;
+    rr(ctx, -barrelW * 0.40, muzzleY + 0.015 * sc,
+        barrelW * 0.18, (breechY - muzzleY) - 0.03 * sc, barrelW * 0.08);
+    ctx.fill();
+    // Dark shadow stripe down the unlit side.
+    ctx.fillStyle = STEEL_SH;
+    rr(ctx, barrelW * 0.22, muzzleY + 0.015 * sc,
+        barrelW * 0.18, (breechY - muzzleY) - 0.03 * sc, barrelW * 0.08);
+    ctx.fill();
+
+    // ── 4. BARREL BANDS (brass furniture pinning barrel to forestock) ──
+    const drawBarrelBand = (y, w) => {
       ctx.fillStyle = MK_GOLD;
-      const cx = 0, cy = 0.005 * sc, r = 0.035 * sc;
-      ctx.beginPath();
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * TAU;
-        const rr2 = (i % 2 === 0) ? r : r * 0.45;
-        const px = cx + Math.cos(a) * rr2;
-        const py = cy + Math.sin(a) * rr2;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
+      rr(ctx, -forestockHW * 0.98, y, forestockHW * 1.96, w, 0.014 * sc);
       ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.012 * sc; ctx.stroke();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.4; ctx.stroke();
       ctx.fillStyle = MK_GOLD_HI;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.20, 0, TAU);
-      ctx.fill();
-    }
-    // Brass cock (hammer) on the side.
-    ctx.fillStyle = MK_GOLD;
-    rr(ctx, 0.038 * sc, -0.07 * sc, 0.024 * sc, 0.075 * sc, 0.008 * sc);
-    ctx.fill();
-    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.010 * sc; ctx.stroke();
-
-    // ── long dark-navy barrel ──
-    ctx.fillStyle = MK_NAVY;
-    rr(ctx, -barrelW * 0.5, -L * 0.50, barrelW, L * 0.55, barrelW * 0.22);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-    // Teal/slate highlight stripe along one side of the barrel.
-    ctx.fillStyle = `rgba(33,158,188,0.55)`;
-    rr(ctx, -barrelW * 0.45, -L * 0.49, barrelW * 0.30, L * 0.52, barrelW * 0.10);
-    ctx.fill();
-    // Sky-blue catch line along the very top.
-    ctx.fillStyle = `rgba(142,202,230,0.60)`;
-    rr(ctx, -barrelW * 0.18, -L * 0.49, barrelW * 0.10, L * 0.50, barrelW * 0.04);
-    ctx.fill();
-
-    // ── three gold trim bands along the barrel (lock / mid / muzzle) ──
-    const drawBand = (yPos, w) => {
-      ctx.fillStyle = MK_GOLD;
-      rr(ctx, -barrelW * 0.78, yPos, barrelW * 1.56, w, 0.025 * sc);
-      ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.020 * sc; ctx.stroke();
-      ctx.fillStyle = MK_GOLD_HI;
-      ctx.fillRect(-barrelW * 0.40, yPos + w * 0.10, barrelW * 0.80, w * 0.20);
-      // tiny ornamental notches
-      ctx.fillStyle = MK_NAVY_D;
-      for (let i = -2; i <= 2; i++) {
-        ctx.fillRect(i * barrelW * 0.30, yPos + w * 0.65, 0.008 * sc, w * 0.30);
-      }
+      ctx.fillRect(-forestockHW * 0.65, y + w * 0.18,
+                   forestockHW * 1.30, w * 0.22);
     };
-    drawBand(0.005 * sc, 0.070 * sc);       // breech band (at the lock)
-    drawBand(-L * 0.22, 0.055 * sc);        // mid barrel band
-    drawBand(-L * 0.50 + 0.005 * sc, 0.080 * sc); // muzzle band (bigger)
+    drawBarrelBand(forestockTopY + 0.020 * sc, 0.050 * sc);    // upper band
+    drawBarrelBand(-L * 0.22, 0.040 * sc);                      // middle band
 
-    // Ramrod tube — slim parallel strip under (behind) the barrel.
-    ctx.fillStyle = MK_SKY;
-    rr(ctx, barrelW * 0.22, -L * 0.42, 0.030 * sc, L * 0.38, 0.012 * sc);
+    // ── 5. MUZZLE CAP (brass collar at the very tip of the wood) ───────
+    ctx.fillStyle = MK_GOLD;
+    rr(ctx, -forestockHW * 1.02, forestockTopY - 0.02 * sc,
+        forestockHW * 2.04, 0.06 * sc, 0.018 * sc);
     ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = 0.014 * sc; ctx.stroke();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.45; ctx.stroke();
+    ctx.fillStyle = MK_GOLD_HI;
+    ctx.fillRect(-forestockHW * 0.60, forestockTopY - 0.01 * sc,
+                 forestockHW * 1.20, 0.015 * sc);
 
-    // Dark muzzle bore (small dark circle at the tip).
-    ctx.fillStyle = MK_NAVY_D;
+    // ── 6. LOCK PLATE (steel plate on the right of the action) ─────────
+    ctx.fillStyle = STEEL;
+    rr(ctx, forestockHW * 0.95, breechY - 0.005 * sc,
+        0.115 * sc, 0.14 * sc, 0.02 * sc);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
+    ctx.fillStyle = STEEL_HI;
+    rr(ctx, forestockHW * 1.00, breechY + 0.005 * sc,
+        0.105 * sc, 0.028 * sc, 0.01 * sc);
+    ctx.fill();
+    // Tiny gold lock-plate screw.
+    ctx.fillStyle = MK_GOLD;
     ctx.beginPath();
-    ctx.arc(0, -L * 0.50 + 0.025 * sc, barrelW * 0.34, 0, TAU);
+    ctx.arc(forestockHW * 1.55, breechY + 0.08 * sc, 0.012 * sc, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.3; ctx.stroke();
+
+    // ── 7. FLINTLOCK COCK / HAMMER (S-curve gripping the flint) ────────
+    ctx.fillStyle = STEEL_SH;
+    ctx.beginPath();
+    ctx.moveTo(forestockHW * 1.40, breechY + 0.03 * sc);
+    ctx.quadraticCurveTo(forestockHW * 1.95, breechY - 0.04 * sc,
+                         forestockHW * 1.70, breechY - 0.11 * sc);
+    ctx.lineTo(forestockHW * 1.30, breechY - 0.13 * sc);
+    ctx.quadraticCurveTo(forestockHW * 1.45, breechY - 0.06 * sc,
+                         forestockHW * 1.20, breechY + 0.01 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.45; ctx.stroke();
+    // Flint chip held in the cock jaws.
+    ctx.fillStyle = '#d8d8c0';
+    ctx.fillRect(forestockHW * 1.32, breechY - 0.115 * sc, 0.040 * sc, 0.024 * sc);
+
+    // ── 8. FRIZZEN + PAN (brass L-shape in front of the cock) ──────────
+    ctx.fillStyle = MK_GOLD;
+    ctx.beginPath();
+    ctx.moveTo(forestockHW * 1.05, breechY - 0.02 * sc);
+    ctx.lineTo(forestockHW * 1.32, breechY - 0.04 * sc);
+    ctx.lineTo(forestockHW * 1.32, breechY + 0.02 * sc);
+    ctx.lineTo(forestockHW * 1.05, breechY + 0.04 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.35; ctx.stroke();
+    ctx.fillStyle = MK_GOLD_HI;
+    ctx.fillRect(forestockHW * 1.08, breechY - 0.025 * sc, 0.026 * sc, 0.008 * sc);
+
+    // ── 9. TRIGGER GUARD (brass loop under the wrist) ──────────────────
+    ctx.fillStyle = MK_GOLD;
+    rr(ctx, -wristHW * 1.10, wristTopY + 0.005 * sc,
+        wristHW * 2.20, 0.018 * sc, 0.006 * sc);
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.3; ctx.stroke();
+    // Loop arc under the trigger.
+    ctx.strokeStyle = MK_GOLD; ctx.lineWidth = 0.022 * sc;
+    ctx.beginPath();
+    ctx.arc(0, wristTopY + 0.05 * sc, 0.065 * sc, 0, Math.PI);
+    ctx.stroke();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.35;
+    ctx.beginPath();
+    ctx.arc(0, wristTopY + 0.05 * sc, 0.065 * sc, 0, Math.PI);
+    ctx.stroke();
+    // Trigger blade (small steel sliver inside the guard).
+    ctx.fillStyle = STEEL_SH;
+    ctx.beginPath();
+    ctx.moveTo(-0.014 * sc, wristTopY + 0.020 * sc);
+    ctx.lineTo( 0.014 * sc, wristTopY + 0.020 * sc);
+    ctx.lineTo( 0.006 * sc, wristTopY + 0.060 * sc);
+    ctx.lineTo(-0.010 * sc, wristTopY + 0.060 * sc);
+    ctx.closePath();
     ctx.fill();
 
-    // ── BAYONET attached to the muzzle (steel blade with gold socket) ──
+    // ── 10. RAMROD (brass-tipped rod tucked under the barrel) ──────────
+    ctx.fillStyle = WOOD_HI;
+    rr(ctx, -barrelW * 0.10, forestockTopY + 0.06 * sc,
+        0.024 * sc, (breechY - forestockTopY) - 0.10 * sc, 0.008 * sc);
+    ctx.fill();
+    ctx.strokeStyle = WOOD_SH; ctx.lineWidth = OW * 0.3; ctx.stroke();
+    ctx.fillStyle = MK_GOLD;
+    ctx.beginPath();
+    ctx.arc(-barrelW * 0.10 + 0.012 * sc, forestockTopY + 0.085 * sc,
+            0.016 * sc, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.3; ctx.stroke();
+
+    // ── 11. IRON SIGHTS (front blade + rear notch) ─────────────────────
+    // Rear sight notch — small steel block above the breech.
+    ctx.fillStyle = STEEL_SH;
+    ctx.beginPath();
+    ctx.moveTo(-0.030 * sc, breechY - 0.020 * sc);
+    ctx.lineTo(-0.030 * sc, breechY - 0.070 * sc);
+    ctx.lineTo(-0.010 * sc, breechY - 0.070 * sc);
+    ctx.lineTo(-0.010 * sc, breechY - 0.050 * sc);
+    ctx.lineTo( 0.010 * sc, breechY - 0.050 * sc);
+    ctx.lineTo( 0.010 * sc, breechY - 0.070 * sc);
+    ctx.lineTo( 0.030 * sc, breechY - 0.070 * sc);
+    ctx.lineTo( 0.030 * sc, breechY - 0.020 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.3; ctx.stroke();
+    // Front sight — small steel blade just behind the muzzle cap.
+    ctx.fillStyle = STEEL_SH;
+    ctx.beginPath();
+    ctx.moveTo(-0.010 * sc, muzzleY + 0.10 * sc);
+    ctx.lineTo( 0.010 * sc, muzzleY + 0.10 * sc);
+    ctx.lineTo( 0.005 * sc, muzzleY + 0.04 * sc);
+    ctx.lineTo(-0.005 * sc, muzzleY + 0.04 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.3; ctx.stroke();
+
+    // ── 12. MUZZLE BORE (dark hole at the tip of the barrel) ───────────
+    ctx.fillStyle = BORE;
+    ctx.beginPath();
+    ctx.arc(0, muzzleY + 0.020 * sc, barrelW * 0.36, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = STEEL_HI; ctx.lineWidth = 0.010 * sc;
+    ctx.beginPath();
+    ctx.arc(0, muzzleY + 0.020 * sc, barrelW * 0.36, 0, TAU);
+    ctx.stroke();
+
+    // ── 13. BAYONET (triangular steel blade in front of the muzzle) ────
     {
-      const bayL = 0.55 * sc;
-      const bayW = 0.040 * sc;
-      const bayBase = -L * 0.50 - 0.030 * sc;
-      // Gold socket where the bayonet meets the muzzle.
+      const bayL    = 0.50 * sc;
+      const bayW    = 0.034 * sc;
+      const bayBase = muzzleY - 0.005 * sc;
+      // Brass socket where the bayonet clamps onto the muzzle.
       ctx.fillStyle = MK_GOLD;
-      rr(ctx, -barrelW * 0.55, bayBase - 0.05 * sc, barrelW * 1.10, 0.06 * sc, 0.02 * sc);
+      rr(ctx, -barrelW * 0.58, bayBase - 0.045 * sc,
+          barrelW * 1.16, 0.045 * sc, 0.012 * sc);
       ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.014 * sc; ctx.stroke();
-      // Steel blade — slender triangular shape tapering to a point.
-      ctx.fillStyle = MK_SKY_HI;
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.4; ctx.stroke();
+      // Triangular steel blade.
+      ctx.fillStyle = STEEL;
       ctx.beginPath();
-      ctx.moveTo(-bayW, bayBase - 0.05 * sc);
-      ctx.lineTo( bayW, bayBase - 0.05 * sc);
-      ctx.lineTo( bayW * 0.3, bayBase - bayL);
-      ctx.lineTo(-bayW * 0.3, bayBase - bayL);
+      ctx.moveTo(-bayW, bayBase - 0.045 * sc);
+      ctx.lineTo( bayW, bayBase - 0.045 * sc);
+      ctx.lineTo( bayW * 0.15, bayBase - bayL);
+      ctx.lineTo(-bayW * 0.15, bayBase - bayL);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.016 * sc; ctx.stroke();
-      // Bright catch line down the center of the blade.
-      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = OW * 0.45; ctx.stroke();
+      // Bright catch line down the spine of the blade (lit side).
+      ctx.fillStyle = STEEL_HI;
       ctx.beginPath();
-      ctx.moveTo(-bayW * 0.14, bayBase - 0.06 * sc);
-      ctx.lineTo( bayW * 0.06, bayBase - 0.06 * sc);
-      ctx.lineTo( bayW * 0.06, bayBase - bayL * 0.95);
-      ctx.lineTo(-bayW * 0.14, bayBase - bayL * 0.95);
+      ctx.moveTo(-bayW * 0.55, bayBase - 0.055 * sc);
+      ctx.lineTo(-bayW * 0.20, bayBase - 0.055 * sc);
+      ctx.lineTo(-bayW * 0.04, bayBase - bayL * 0.95);
+      ctx.lineTo(-bayW * 0.10, bayBase - bayL * 0.95);
       ctx.closePath();
-      ctx.fill();
-      // Gold ribbon tied at the bayonet base (girly accent).
-      ctx.fillStyle = MK_ORANGE;
-      ctx.beginPath();
-      ctx.moveTo(0, bayBase - 0.02 * sc);
-      ctx.lineTo(-0.10 * sc, bayBase - 0.10 * sc);
-      ctx.lineTo(-0.10 * sc, bayBase + 0.04 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.012 * sc; ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, bayBase - 0.02 * sc);
-      ctx.lineTo(0.10 * sc, bayBase - 0.10 * sc);
-      ctx.lineTo(0.10 * sc, bayBase + 0.04 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = MK_GOLD;
-      ctx.beginPath();
-      ctx.arc(0, bayBase - 0.02 * sc, 0.025 * sc, 0, TAU);
       ctx.fill();
     }
   };
@@ -7340,48 +5499,6 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   // Drawn in side profile around (hx, headY). Smooth dome silhouette
   // instead of the old triangular tricorn peaks: think a soft-crowned
   // cavalier cap with an upturned brim and a gold trim band.
-  const drawTricornSide = (hx) => {
-    // Outer hat silhouette (teal) — dome crown + flared brim.
-    ctx.fillStyle = MK_TEAL;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.42 * sc, headY - 0.04 * sc);
-    // Sweep up and over the dome (slight forward asymmetry).
-    ctx.quadraticCurveTo(hx - 0.40 * sc, headY - 0.34 * sc,
-                         hx + 0.06 * sc, headY - 0.38 * sc);
-    ctx.quadraticCurveTo(hx + 0.40 * sc, headY - 0.30 * sc,
-                         hx + 0.42 * sc, headY - 0.04 * sc);
-    // Flared brim under the dome.
-    ctx.lineTo(hx + 0.36 * sc, headY + 0.06 * sc);
-    ctx.lineTo(hx - 0.36 * sc, headY + 0.04 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Light-blue crown highlight (curved catch along the top of the dome).
-    ctx.fillStyle = MK_SKY;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.26 * sc, headY - 0.24 * sc);
-    ctx.quadraticCurveTo(hx + 0.04 * sc, headY - 0.34 * sc,
-                         hx + 0.22 * sc, headY - 0.24 * sc);
-    ctx.quadraticCurveTo(hx + 0.06 * sc, headY - 0.18 * sc,
-                         hx - 0.10 * sc, headY - 0.18 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // Dark-navy shadow under the brim.
-    ctx.fillStyle = `rgba(2,48,71,0.55)`;
-    rr(ctx, hx - 0.36 * sc, headY - 0.02 * sc, 0.74 * sc, 0.07 * sc, 0.025 * sc);
-    ctx.fill();
-    // Gold trim band along the rounded crown edge.
-    ctx.strokeStyle = MK_GOLD;
-    ctx.lineWidth = 0.026 * sc;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.40 * sc, headY - 0.04 * sc);
-    ctx.quadraticCurveTo(hx - 0.38 * sc, headY - 0.32 * sc,
-                         hx + 0.06 * sc, headY - 0.36 * sc);
-    ctx.quadraticCurveTo(hx + 0.38 * sc, headY - 0.28 * sc,
-                         hx + 0.40 * sc, headY - 0.03 * sc);
-    ctx.stroke();
-  };
-
   // Front view — symmetric rounded dome with a soft arched brim.
   const drawTricornFront = (hx) => {
     ctx.fillStyle = MK_TEAL;
@@ -7574,139 +5691,182 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   };
 
   // ── reusable: a clearly-human female face (skin patch + features) ──
-  // Wider exposed face than the old "just nose/chin under brim" so the eye
-  // area is unmistakably human skin, not magical-gold-glow under shadow.
-  const drawSkinSide = (hx) => {
-    ctx.fillStyle = MK_SKIN;
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.02 * sc, headY - 0.08 * sc);
-    ctx.quadraticCurveTo(hx + 0.34 * sc, headY - 0.02 * sc,
-                         hx + 0.34 * sc, headY + 0.10 * sc);
-    ctx.quadraticCurveTo(hx + 0.30 * sc, headY + 0.22 * sc,
-                         hx + 0.26 * sc, headY + 0.32 * sc);
-    ctx.quadraticCurveTo(hx + 0.14 * sc, headY + 0.38 * sc,
-                         hx + 0.02 * sc, headY + 0.32 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    // Cheek blush.
-    ctx.fillStyle = `rgba(232,168,155,0.70)`;
-    ctx.beginPath();
-    ctx.ellipse(hx + 0.22 * sc, headY + 0.18 * sc, 0.07 * sc, 0.040 * sc, 0, 0, TAU);
-    ctx.fill();
-    // Nose ridge highlight.
-    ctx.fillStyle = '#fff1e0';
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.26 * sc, headY + 0.12 * sc);
-    ctx.lineTo(hx + 0.32 * sc, headY + 0.18 * sc);
-    ctx.lineTo(hx + 0.24 * sc, headY + 0.18 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // Soft red lip ellipse.
-    ctx.fillStyle = '#bc4749';
-    ctx.beginPath();
-    ctx.ellipse(hx + 0.20 * sc, headY + 0.26 * sc, 0.07 * sc, 0.020 * sc, 0, 0, TAU);
-    ctx.fill();
-  };
-
+  // Big chibi face oval — DOMINANT over the hair frame so the heroine
+  // reads as "face with a thin hair halo", not "tiny face buried in hair".
+  // Cheek-bones span ±0.30*sc (vs. the hair backdrop at ±0.34*sc), giving
+  // the hair a slim ~0.04*sc frame on each side instead of a thick halo.
   const drawSkinFront = (hx) => {
-    // Wider face oval — upper face visible (eyes + cheeks), not just chin.
     ctx.fillStyle = MK_SKIN;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.24 * sc, headY - 0.04 * sc);
-    ctx.quadraticCurveTo(hx, headY - 0.10 * sc, hx + 0.24 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx + 0.20 * sc, headY + 0.24 * sc);
-    ctx.quadraticCurveTo(hx, headY + 0.36 * sc, hx - 0.20 * sc, headY + 0.24 * sc);
+    // Slightly higher forehead (above the brim line) so the face has more
+    // vertical real-estate; wider cheekbones; chin pushed down to meet
+    // the bottom of the hair-backdrop ellipse for a continuous silhouette.
+    ctx.moveTo(hx - 0.30 * sc, headY - 0.06 * sc);
+    ctx.quadraticCurveTo(hx, headY - 0.12 * sc, hx + 0.30 * sc, headY - 0.06 * sc);
+    ctx.lineTo(hx + 0.26 * sc, headY + 0.26 * sc);
+    ctx.quadraticCurveTo(hx, headY + 0.40 * sc, hx - 0.26 * sc, headY + 0.26 * sc);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    // Cheek blush both sides.
-    ctx.fillStyle = `rgba(232,168,155,0.70)`;
+    // Cheek blush — moved outward + slightly larger to suit the bigger face.
+    ctx.fillStyle = `rgba(232,168,155,0.72)`;
     ctx.beginPath();
-    ctx.ellipse(hx - 0.14 * sc, headY + 0.17 * sc, 0.055 * sc, 0.035 * sc, 0, 0, TAU);
+    ctx.ellipse(hx - 0.18 * sc, headY + 0.19 * sc, 0.068 * sc, 0.040 * sc, 0, 0, TAU);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(hx + 0.14 * sc, headY + 0.17 * sc, 0.055 * sc, 0.035 * sc, 0, 0, TAU);
+    ctx.ellipse(hx + 0.18 * sc, headY + 0.19 * sc, 0.068 * sc, 0.040 * sc, 0, 0, TAU);
     ctx.fill();
-    // Nose — subtle shadow triangle.
+    // Nose — subtle shadow triangle (a touch longer to balance the bigger face).
     ctx.fillStyle = MK_SKIN_SH;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.025 * sc, headY + 0.14 * sc);
-    ctx.lineTo(hx + 0.025 * sc, headY + 0.14 * sc);
-    ctx.lineTo(hx, headY + 0.22 * sc);
+    ctx.moveTo(hx - 0.030 * sc, headY + 0.15 * sc);
+    ctx.lineTo(hx + 0.030 * sc, headY + 0.15 * sc);
+    ctx.lineTo(hx, headY + 0.24 * sc);
     ctx.closePath();
     ctx.fill();
-    // Lips — full feminine red.
+    // Lips — slightly fuller; nudged down to sit between nose and chin.
     ctx.fillStyle = '#bc4749';
     ctx.beginPath();
-    ctx.ellipse(hx, headY + 0.27 * sc, 0.075 * sc, 0.022 * sc, 0, 0, TAU);
+    ctx.ellipse(hx, headY + 0.30 * sc, 0.090 * sc, 0.026 * sc, 0, 0, TAU);
     ctx.fill();
     // Lip-shine highlight.
     ctx.fillStyle = `rgba(255,220,210,0.65)`;
     ctx.beginPath();
-    ctx.ellipse(hx, headY + 0.265 * sc, 0.030 * sc, 0.007 * sc, 0, 0, TAU);
+    ctx.ellipse(hx, headY + 0.295 * sc, 0.036 * sc, 0.008 * sc, 0, 0, TAU);
     ctx.fill();
   };
 
   // ── human eyes (white sclera + brown iris + brow + lashes) ──
   // Replaces the old gold-glow-under-shadow eyes so the musketeer reads as
   // a human heroine, not a magical sorceress.
-  const drawEyeSide = (hx) => {
-    const ex = hx + 0.20 * sc, ey = headY + 0.08 * sc;
-    ctx.strokeStyle = '#2a1810';
-    ctx.lineWidth = 0.022 * sc;
-    ctx.beginPath();
-    ctx.moveTo(ex - 0.07 * sc, ey - 0.005 * sc);
-    ctx.quadraticCurveTo(ex, ey - 0.045 * sc, ex + 0.06 * sc, ey + 0.005 * sc);
-    ctx.stroke();
-    ctx.fillStyle = '#f5eee8';
-    ctx.beginPath();
-    ctx.ellipse(ex, ey + 0.005 * sc, 0.055 * sc, 0.030 * sc, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#4e3420';
-    ctx.beginPath();
-    ctx.arc(ex + 0.012 * sc, ey + 0.008 * sc, 0.026 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(ex + 0.020 * sc, ey, 0.010 * sc, 0, TAU);
-    ctx.fill();
-    // brow
-    ctx.strokeStyle = 'rgba(80,55,40,0.90)';
-    ctx.lineWidth = 0.020 * sc;
-    ctx.beginPath();
-    ctx.moveTo(ex - 0.06 * sc, ey - 0.07 * sc);
-    ctx.quadraticCurveTo(ex, ey - 0.095 * sc, ex + 0.05 * sc, ey - 0.06 * sc);
-    ctx.stroke();
-  };
   const drawEyesFront = (hx) => {
-    for (const dx of [-0.10, 0.10]) {
-      const ex = hx + dx * sc, ey = headY + 0.10 * sc;
+    // Eyes moved outward (±0.13 from ±0.10) and slightly enlarged so they
+    // stay well-spaced and expressive on the wider chibi face.
+    for (const dx of [-0.13, 0.13]) {
+      const ex = hx + dx * sc, ey = headY + 0.12 * sc;
       ctx.strokeStyle = '#2a1810';
-      ctx.lineWidth = 0.020 * sc;
+      ctx.lineWidth = 0.022 * sc;
       ctx.beginPath();
-      ctx.moveTo(ex - 0.055 * sc, ey - 0.002 * sc);
-      ctx.quadraticCurveTo(ex, ey - 0.038 * sc, ex + 0.055 * sc, ey - 0.002 * sc);
+      ctx.moveTo(ex - 0.065 * sc, ey - 0.002 * sc);
+      ctx.quadraticCurveTo(ex, ey - 0.044 * sc, ex + 0.065 * sc, ey - 0.002 * sc);
       ctx.stroke();
       ctx.fillStyle = '#f5eee8';
       ctx.beginPath();
-      ctx.ellipse(ex, ey + 0.006 * sc, 0.050 * sc, 0.028 * sc, 0, 0, TAU);
+      ctx.ellipse(ex, ey + 0.008 * sc, 0.060 * sc, 0.034 * sc, 0, 0, TAU);
       ctx.fill();
       ctx.fillStyle = '#4e3420';
       ctx.beginPath();
-      ctx.arc(ex, ey + 0.010 * sc, 0.025 * sc, 0, TAU);
+      ctx.arc(ex, ey + 0.012 * sc, 0.030 * sc, 0, TAU);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(ex + 0.010 * sc, ey + 0.002 * sc, 0.010 * sc, 0, TAU);
+      ctx.arc(ex + 0.012 * sc, ey + 0.002 * sc, 0.012 * sc, 0, TAU);
       ctx.fill();
       ctx.strokeStyle = 'rgba(80,55,40,0.90)';
-      ctx.lineWidth = 0.018 * sc;
+      ctx.lineWidth = 0.020 * sc;
       ctx.beginPath();
-      ctx.moveTo(ex - 0.05 * sc, ey - 0.07 * sc);
-      ctx.quadraticCurveTo(ex, ey - 0.090 * sc, ex + 0.05 * sc, ey - 0.07 * sc);
+      ctx.moveTo(ex - 0.058 * sc, ey - 0.080 * sc);
+      ctx.quadraticCurveTo(ex, ey - 0.104 * sc, ex + 0.058 * sc, ey - 0.080 * sc);
       ctx.stroke();
     }
+  };
+
+  // ── front-view hair frame: orange skull backdrop + side locks ──
+  // Drawn BEFORE the face so the face skin sits on top of the hair, and
+  // BEFORE the tricorn so the hat covers the hair crown. Only the sides
+  // of the backdrop (and the falling side locks) remain visible as a
+  // hair frame around the cheeks — matching the wider silhouette of the
+  // back view so front/back read the same head size. Without this, the
+  // bare face oval is much narrower than the back-of-head and the front
+  // sprite looks "shrunken" next to the back.
+  const drawHairFront = (hx) => {
+    // Round orange hair backdrop — same dimensions as drawHeadBack so
+    // the front silhouette matches the back below the hat brim.
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.ellipse(hx, headY + 0.06 * sc, 0.34 * sc, 0.32 * sc, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
+    // Darker side shadow for cel-shading on the shaded cheek hair —
+    // pushed outward to clear the now-wider face oval so it still reads
+    // as a hair shadow (was at +0.26 which is now hidden under the face).
+    ctx.fillStyle = MK_ORANGE_D;
+    ctx.beginPath();
+    ctx.ellipse(hx + 0.32 * sc, headY + 0.18 * sc, 0.05 * sc, 0.16 * sc, 0, 0, TAU);
+    ctx.fill();
+    // Lighter strand highlights along the lit (left) side — moved
+    // further out so they fall on the visible hair strip beside the
+    // cheek, not under the face skin.
+    ctx.strokeStyle = `rgba(255,210,148,0.55)`;
+    ctx.lineWidth = 0.014 * sc;
+    for (let i = 0; i < 2; i++) {
+      const off = (-0.33 + i * 0.04) * sc;
+      ctx.beginPath();
+      ctx.moveTo(hx + off, headY + 0.04 * sc);
+      ctx.quadraticCurveTo(hx + off * 1.02, headY + 0.18 * sc,
+                           hx + off * 0.95, headY + 0.30 * sc);
+      ctx.stroke();
+    }
+    // Side locks falling past the cheeks (mirror the back view's wisps).
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.moveTo(hx - 0.32 * sc, headY + 0.02 * sc);
+    ctx.quadraticCurveTo(hx - 0.40 * sc, headY + 0.18 * sc,
+                         hx - 0.28 * sc, headY + 0.32 * sc);
+    ctx.quadraticCurveTo(hx - 0.24 * sc, headY + 0.18 * sc,
+                         hx - 0.22 * sc, headY + 0.06 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.moveTo(hx + 0.32 * sc, headY + 0.02 * sc);
+    ctx.quadraticCurveTo(hx + 0.40 * sc, headY + 0.18 * sc,
+                         hx + 0.28 * sc, headY + 0.32 * sc);
+    ctx.quadraticCurveTo(hx + 0.24 * sc, headY + 0.18 * sc,
+                         hx + 0.22 * sc, headY + 0.06 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+  };
+
+  // ── front-view bangs: small jagged fringe peeking below the brim ──
+  // Drawn AFTER the tricorn so the tips visibly hang on the upper face
+  // (no fighting with the brim shadow). Kept low-density and offset
+  // from the center so the eyes remain unobstructed.
+  const drawBangsFront = (hx) => {
+    ctx.fillStyle = MK_ORANGE;
+    // Left tuft hanging from under the brim toward the lit cheek —
+    // widened to span the larger face's left half.
+    ctx.beginPath();
+    ctx.moveTo(hx - 0.27 * sc, headY + 0.04 * sc);
+    ctx.lineTo(hx - 0.20 * sc, headY + 0.11 * sc);
+    ctx.lineTo(hx - 0.13 * sc, headY + 0.06 * sc);
+    ctx.lineTo(hx - 0.07 * sc, headY + 0.10 * sc);
+    ctx.lineTo(hx - 0.02 * sc, headY + 0.04 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+    // Right tuft (slightly larger so the fringe reads asymmetric/cute).
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.moveTo(hx + 0.02 * sc, headY + 0.04 * sc);
+    ctx.lineTo(hx + 0.08 * sc, headY + 0.10 * sc);
+    ctx.lineTo(hx + 0.15 * sc, headY + 0.06 * sc);
+    ctx.lineTo(hx + 0.21 * sc, headY + 0.12 * sc);
+    ctx.lineTo(hx + 0.27 * sc, headY + 0.04 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+    // Darker streak shadow on the right tuft.
+    ctx.fillStyle = MK_ORANGE_D;
+    ctx.beginPath();
+    ctx.moveTo(hx + 0.15 * sc, headY + 0.06 * sc);
+    ctx.lineTo(hx + 0.21 * sc, headY + 0.12 * sc);
+    ctx.lineTo(hx + 0.27 * sc, headY + 0.04 * sc);
+    ctx.lineTo(hx + 0.22 * sc, headY + 0.05 * sc);
+    ctx.closePath();
+    ctx.fill();
   };
 
   // ── back of head: round orange-hair skull silhouette ──
@@ -7775,295 +5935,7 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  // ── VIEW DISPATCH ─────────────────────────────────────────────────────
-  // ════════════════════════════════════════════════════════════════════════
-  if (p.view === 'side') {
-
-    // (Back-skirt flutter / cloak removed — clean dress silhouette only.)
-
-    // ── back ponytail tail (visible behind head) ──
-    drawPonytail(-0.20 * sc, headY + 0.32 * sc, -1, -recoilFan * 0.30);
-
-    // ── legs ──
-    const legSpread = 0.20 * sc;
-    const legSwing  = sw * 0.30 * sc * p.moving;
-    const drawSideLeg = (side, swingX, isBack) => {
-      const hipX     = side * legSpread;
-      const footX    = side * legSpread + swingX;
-      const kneeBend = side * legSpread + swingX * 0.55;
-      const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // Thicker peach legs (girly but sturdy chibi proportions).
-      ctx.fillStyle = isBack ? MK_SKIN_SH : MK_SKIN;
-      capsule(ctx, hipX, hipY + 0.08 * sc, kneeBend, kneeY, 0.14 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.38 * sc, 0.12 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      // subtle peach shadow on the back of the calf (near leg only)
-      if (!isBack) {
-        ctx.fillStyle = `rgba(232,168,155,0.50)`;
-        capsule(ctx, kneeBend - 0.04 * sc, kneeY + 0.04 * sc,
-                     footX - 0.04 * sc, baseY - 0.40 * sc, 0.050 * sc);
-        ctx.fill();
-      }
-      // tall navy boot
-      ctx.fillStyle = MK_NAVY;
-      rr(ctx, footX - 0.22 * sc, baseY - 0.40 * sc, 0.46 * sc, 0.42 * sc, 0.06 * sc);
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // navy boot sole
-      ctx.fillStyle = MK_NAVY_D;
-      rr(ctx, footX - 0.24 * sc, baseY - 0.06 * sc, 0.50 * sc, 0.06 * sc, 0.02 * sc);
-      ctx.fill();
-      // gold cuff at the top of the boot
-      ctx.fillStyle = MK_GOLD;
-      rr(ctx, footX - 0.22 * sc, baseY - 0.42 * sc, 0.46 * sc, 0.06 * sc, 0.02 * sc);
-      ctx.fill();
-      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.014 * sc; ctx.stroke();
-      // foot-plant dust
-      const plantA = Math.max(0, (isBack ? -sw : sw)) * p.moving;
-      if (plantA > 0.15) {
-        ctx.fillStyle = `rgba(180,180,170,${0.20 * plantA})`;
-        ctx.beginPath();
-        ctx.ellipse(footX - 0.08 * sc * (isBack ? -1 : 1), baseY + 0.02 * sc,
-                    0.32 * sc * plantA, 0.09 * sc * plantA, 0, 0, TAU);
-        ctx.fill();
-      }
-    };
-    drawSideLeg(-1, -legSwing, true);
-
-    // ── hourglass bodice (side profile, cinched at the waist) ──
-    // Back side: gentle in-curve at the small of the back.
-    // Belly side: bust bulges forward, tucks sharply into the waist.
-    const coatHemY = hipY + 0.20 * sc;  // SHORT skirt hem (was hipY + 0.34)
-    const waistBackX  = -0.20 * sc;
-    const waistFrontX =  0.26 * sc;
-    ctx.beginPath();
-    ctx.moveTo(-0.30 * sc, shoY);                                       // back shoulder
-    ctx.quadraticCurveTo(-0.42 * sc, shoY + 0.34 * sc,                 // back upper bulge
-                         waistBackX, hipY);                             // back waist (cinch)
-    ctx.lineTo(waistFrontX, hipY);                                      // belly waist (cinch)
-    ctx.quadraticCurveTo(0.54 * sc, shoY + 0.30 * sc,                  // bust bulge (front)
-                         0.42 * sc, shoY);                              // front shoulder
-    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.30 * sc, shoY); // collar
-    ctx.closePath();
-    const tg = ctx.createLinearGradient(-0.4 * sc, shoY, 0.4 * sc, hipY);
-    tg.addColorStop(0, MK_SKY);
-    tg.addColorStop(0.55, MK_TEAL);
-    tg.addColorStop(1, MK_TEAL_D);
-    ctx.fillStyle = tg;
-    ctx.fill();
-    // back-side shadow band (re-traces just the back half of the bodice).
-    ctx.fillStyle = `rgba(2,48,71,0.45)`;
-    ctx.beginPath();
-    ctx.moveTo(-0.30 * sc, shoY);
-    ctx.quadraticCurveTo(-0.42 * sc, shoY + 0.34 * sc,
-                         waistBackX, hipY);
-    ctx.lineTo(-0.04 * sc, hipY);
-    ctx.lineTo(-0.06 * sc, shoY - 0.02 * sc);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.10;
-    ctx.beginPath();
-    ctx.moveTo(-0.30 * sc, shoY);
-    ctx.quadraticCurveTo(-0.42 * sc, shoY + 0.34 * sc,
-                         waistBackX, hipY);
-    ctx.lineTo(waistFrontX, hipY);
-    ctx.quadraticCurveTo(0.54 * sc, shoY + 0.30 * sc,
-                         0.42 * sc, shoY);
-    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.30 * sc, shoY);
-    ctx.closePath();
-    ctx.stroke();
-    // Gold buttons down the front of the bodice.
-    drawCoatButtons(0.20 * sc, shoY + 0.16 * sc, hipY - 0.08 * sc);
-    // Light-blue sweetheart neckline.
-    ctx.strokeStyle = MK_SKY;
-    ctx.lineWidth = 0.030 * sc;
-    ctx.beginPath();
-    ctx.moveTo(0.04 * sc, shoY - 0.02 * sc);
-    ctx.quadraticCurveTo(0.22 * sc, shoY + 0.18 * sc, 0.34 * sc, shoY + 0.04 * sc);
-    ctx.stroke();
-
-    // ── A-line short skirt (flared from waist, above-knee, fluttering) ──
-    {
-      ctx.fillStyle = MK_TEAL_D;
-      ctx.beginPath();
-      ctx.moveTo(waistBackX, hipY + 0.02 * sc);
-      ctx.quadraticCurveTo(-0.42 * sc + flutter * 0.4 - recoilFan * 0.30 * sc,
-                            (hipY + coatHemY) * 0.5,
-                            -0.46 * sc + flutter * 0.6 - recoilFan * 0.40 * sc,
-                            coatHemY);
-      ctx.quadraticCurveTo(-0.04 * sc, coatHemY + 0.12 * sc,
-                            0.40 * sc + flutter * 0.2, coatHemY - 0.04 * sc);
-      ctx.quadraticCurveTo(0.42 * sc, (hipY + coatHemY) * 0.5,
-                            waistFrontX, hipY + 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.9; ctx.stroke();
-      // teal mid-tone overlay (the lit, belly-side half)
-      ctx.fillStyle = MK_TEAL;
-      ctx.beginPath();
-      ctx.moveTo(0, hipY + 0.02 * sc);
-      ctx.quadraticCurveTo(0.10 * sc, (hipY + coatHemY) * 0.5,
-                           0.36 * sc + flutter * 0.2, coatHemY - 0.06 * sc);
-      ctx.quadraticCurveTo(0.40 * sc, (hipY + coatHemY) * 0.5,
-                           waistFrontX, hipY + 0.02 * sc);
-      ctx.closePath();
-      ctx.fill();
-      // Gold trim seam along the bottom hem.
-      ctx.strokeStyle = MK_GOLD;
-      ctx.lineWidth = 0.026 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.42 * sc + flutter * 0.4 - recoilFan * 0.30 * sc,
-                 coatHemY - 0.02 * sc);
-      ctx.quadraticCurveTo(-0.04 * sc, coatHemY + 0.10 * sc,
-                            0.38 * sc + flutter * 0.2, coatHemY - 0.06 * sc);
-      ctx.stroke();
-    }
-
-    // ── narrow belt + buckle at the cinched waist ──
-    ctx.fillStyle = MK_NAVY;
-    rr(ctx, waistBackX - 0.02 * sc, hipY - 0.06 * sc,
-        (waistFrontX - waistBackX) + 0.04 * sc, 0.16 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
-    ctx.fillStyle = MK_GOLD;
-    rr(ctx, 0.04 * sc, hipY - 0.04 * sc, 0.18 * sc, 0.14 * sc, 0.025 * sc);
-    ctx.fill();
-    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.022 * sc; ctx.stroke();
-    ctx.fillStyle = MK_NAVY;
-    ctx.beginPath();
-    ctx.arc(0.16 * sc, hipY + 0.04 * sc, 0.040 * sc, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = MK_GOLD_HI;
-    ctx.fillRect(0.08 * sc, hipY - 0.02 * sc, 0.06 * sc, 0.020 * sc);
-
-    // ── front (near) leg over the coat ──
-    drawSideLeg(1, legSwing, false);
-
-    // ── arms + musket ───────────────────────────────────────────────
-    // Back-hand (trigger) grips behind the lock; front-hand (off-hand)
-    // grips the forestock further along the barrel.  At rest the musket
-    // is at the hip pointing slightly forward-down; on aim it lifts to
-    // shoulder horizontal; on strike it kicks back briefly.
-    const armAng = lerp(0.42, 0.00, shoulder) + strikePhase * (1 - recoverPhase) * -0.10;
-    // Back-hand position in screen-local coords.
-    const backShX = -0.06 * sc, backShY = shoY + 0.18 * sc;
-    const frontShX = 0.34 * sc, frontShY = shoY + 0.14 * sc;
-    const backHandX = lerp(0.10 * sc, -0.04 * sc, shoulder)
-                    - strikePhase * (1 - recoverPhase) * 0.10 * sc;
-    const backHandY = lerp(hipY + 0.06 * sc, shoY + 0.18 * sc, shoulder)
-                    + strikePhase * (1 - recoverPhase) * 0.04 * sc;
-    // Front-hand on the forestock — half-way along the barrel.
-    const barrelL = L;
-    const cosA = Math.cos(armAng), sinA = Math.sin(armAng);
-    const frontHandX = backHandX + cosA * (-barrelL * 0.32);
-    const frontHandY = backHandY + sinA * (-barrelL * 0.32);
-    // Muzzle screen position (just for completeness; flash is drawn in
-    // the musket's own local frame below).
-    // const muzzleX = backHandX + cosA * (-barrelL * 0.50);
-    // const muzzleY = backHandY + sinA * (-barrelL * 0.50);
-
-    // Back upper arm (behind torso) — thicker for chibi balance.
-    ctx.fillStyle = MK_TEAL;
-    capsule(ctx, backShX, backShY, backHandX, backHandY, 0.14 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Sleeve shadow on the underside.
-    ctx.fillStyle = `rgba(2,48,71,0.40)`;
-    capsule(ctx, backShX + 0.02 * sc, backShY + 0.04 * sc,
-                 backHandX + 0.02 * sc, backHandY + 0.04 * sc, 0.07 * sc);
-    ctx.fill();
-    // Cuff + hand.
-    ctx.save();
-    ctx.translate(backHandX, backHandY);
-    ctx.rotate(Math.atan2(backHandY - backShY, backHandX - backShX));
-    ctx.fillStyle = MK_SKY;
-    rr(ctx, -0.13 * sc, -0.085 * sc, 0.22 * sc, 0.17 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    // Gold trim along cuff.
-    ctx.strokeStyle = MK_GOLD; ctx.lineWidth = 0.022 * sc;
-    ctx.beginPath();
-    ctx.moveTo(-0.10 * sc, -0.085 * sc);
-    ctx.lineTo(-0.10 * sc, 0.085 * sc);
-    ctx.stroke();
-    // Skin hand.
-    ctx.fillStyle = MK_SKIN;
-    ctx.beginPath(); ctx.arc(0.08 * sc, 0, 0.065 * sc, 0, TAU); ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    ctx.restore();
-
-    // ── head + hat go above arm so tilt doesn't hide eyes ──
-    // Head tilt: small forward-and-down on aim (sighting down barrel).
-    // The entire head/hat/plume scales up around the chin pivot for chibi cuteness.
-    ctx.save();
-    const headTiltX = shoulder * 0.04 * sc;
-    const headTiltY = shoulder * 0.02 * sc;
-    ctx.translate(headTiltX, headTiltY);
-    {
-      const pY = HEAD_PIVOT_Y();
-      ctx.save();
-      ctx.translate(0, pY);
-      ctx.scale(HEAD_S, HEAD_S);
-      ctx.translate(0, -pY);
-      // Skin face slice (under hat).
-      drawSkinSide(0);
-      // Tricorn hat over the head.
-      drawTricornSide(0);
-      // Plume rises from the side of the hat.
-      ctx.save();
-      ctx.translate(-0.20 * sc, headY - 0.30 * sc);
-      drawPlume(0, 0, 0.60 * sc, plume);
-      ctx.restore();
-      // Eye glow under hat brim.
-      drawEyeSide(0);
-      ctx.restore();
-    }
-    ctx.restore();
-
-    // ── front arm + musket (no shoulder mantle — cloak/trim removed) ──
-    // Front (off-hand) upper arm — thicker for chibi balance.
-    ctx.fillStyle = MK_TEAL;
-    capsule(ctx, frontShX, frontShY, frontHandX, frontHandY, 0.15 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // sleeve shadow
-    ctx.fillStyle = `rgba(2,48,71,0.40)`;
-    capsule(ctx, frontShX + 0.05 * sc, frontShY + 0.04 * sc,
-                 frontHandX + 0.05 * sc, frontHandY + 0.04 * sc, 0.07 * sc);
-    ctx.fill();
-    // Cuff + hand on the forestock.
-    ctx.save();
-    ctx.translate(frontHandX, frontHandY);
-    ctx.rotate(Math.atan2(frontHandY - frontShY, frontHandX - frontShX));
-    ctx.fillStyle = MK_SKY;
-    rr(ctx, -0.12 * sc, -0.08 * sc, 0.22 * sc, 0.16 * sc, 0.04 * sc);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    ctx.strokeStyle = MK_GOLD; ctx.lineWidth = 0.022 * sc;
-    ctx.beginPath();
-    ctx.moveTo(-0.10 * sc, -0.08 * sc);
-    ctx.lineTo(-0.10 * sc, 0.08 * sc);
-    ctx.stroke();
-    ctx.fillStyle = MK_SKIN;
-    ctx.beginPath(); ctx.arc(0.08 * sc, 0, 0.070 * sc, 0, TAU); ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    ctx.restore();
-
-    // ── the musket itself ──
-    ctx.save();
-    ctx.translate(backHandX, backHandY);
-    ctx.rotate(armAng + Math.PI / 2);   // canonical UP → armAng direction
-    drawMusket();
-    // Muzzle flash + smoke during the STRIKE window (firePop drives both).
-    drawMuzzleFlash(firePop);
-    ctx.restore();
-
-  // ── FRONT VIEW ─────────────────────────────────────────────────────────
-  } else if (p.view === 'front') {
+  if (p.view === 'front') {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.05 * sc;
     ctx.translate(sway, 0);
 
@@ -8236,61 +6108,118 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     // ── ponytail drapes behind from one side ──
     drawPonytail(-0.18 * sc, headY + 0.38 * sc, -1, -recoilFan * 0.30);
 
-    // ── arms + musket diagonal across body ──
-    // At rest the musket is held diagonally across the chest. On ATTACK it
-    // rotates toward pointing at the camera (we see the muzzle from straight
-    // on as a bright halo). Reuse the canonical "barrel UP" musket and
-    // rotate it.
-    const armAngF = lerp(-Math.PI / 4, Math.PI / 2 - 0.18, shoulder);
-    // Two-hand grip in front of the chest.
-    const backShXF = 0.40 * sc, backShYF = shoY + 0.20 * sc;
-    const frontShXF = -0.40 * sc, frontShYF = shoY + 0.20 * sc;
-    const backHandXF  = lerp(0.22 * sc, 0.06 * sc, shoulder);
-    const backHandYF  = lerp(hipY + 0.04 * sc, shoY + 0.30 * sc, shoulder);
-    const frontHandXF = lerp(-0.10 * sc, -0.12 * sc, shoulder);
-    const frontHandYF = lerp(shoY + 0.30 * sc, shoY + 0.10 * sc, shoulder);
+    // ── arms + musket: proper shoulder-firing motion ──
+    // armAngF is the BARREL angle in world space (clockwise from +x).
+    //   -π/4 at rest  : rifle held diagonally across the chest (barrel up-right)
+    //    0   at full aim : rifle horizontal, butt against the right shoulder
+    //   recoil briefly kicks the muzzle up by ~13° on the strike frame.
+    // The rifle's canonical barrel is along local -y, so the canvas
+    // rotation we apply is armAngF + π/2.
+    const armAngF = lerp(-Math.PI / 4, 0, shoulder)
+                  + strikePhase * (1 - recoverPhase) * -0.22;
+    const rotAngF = armAngF + Math.PI / 2;
+    const cAng = Math.cos(rotAngF), sAng = Math.sin(rotAngF);
 
-    // Back arm (trigger) — thicker.
+    // Subtle chest twist toward the firing line: pull the front shoulder
+    // forward and the back shoulder back so the off-hand doesn't have to
+    // reach across an unrealistic distance to grip the forestock.
+    const twist = shoulder;
+    const backShXF  = lerp(0.40, 0.30, twist) * sc;
+    const backShYF  = shoY + 0.20 * sc;
+    const frontShXF = lerp(-0.40, -0.06, twist) * sc;
+    const frontShYF = shoY + 0.20 * sc;
+
+    // Back hand grips the wrist of the stock (rifle's canonical origin).
+    // At rest it sits at the right hip; on aim it pulls back into the
+    // shoulder pocket so the butt can plant against the shoulder. Recoil
+    // briefly kicks it backward on the firing frame.
+    const recoilKick = strikePhase * (1 - recoverPhase);
+    const backHandXF = lerp(0.22 * sc, 0.32 * sc, shoulder)
+                     - recoilKick * 0.10 * sc;
+    const backHandYF = lerp(hipY + 0.04 * sc, shoY + 0.10 * sc, shoulder)
+                     - recoilKick * 0.04 * sc;
+
+    // Front hand grips the FORESTOCK — local (0, forestockLocalY) on the
+    // rifle, rotated into world by rotAngF and offset by the back hand.
+    // This keeps the off-hand physically attached to the rifle through
+    // every frame of the animation (rest, windup, fire, recovery).
+    const forestockLocalY = -L * 0.30;
+    const frontHandXF = backHandXF + (-forestockLocalY * sAng);
+    const frontHandYF = backHandYF + ( forestockLocalY * cAng);
+
+    // Helper: small skin "knuckle" circle drawn ON TOP of the rifle at a
+    // grip point, so the fingers visibly wrap around the wrist + forestock
+    // (without it, the rifle covers the hand and the grip reads as floating).
+    const drawKnuckles = (hx, hy) => {
+      ctx.fillStyle = MK_SKIN;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 0.058 * sc, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
+      // Cheek of the thumb — tiny darker shadow on the underside.
+      ctx.fillStyle = MK_SKIN_SH;
+      ctx.beginPath();
+      ctx.arc(hx, hy + 0.024 * sc, 0.032 * sc, 0, TAU);
+      ctx.fill();
+    };
+
+    // Back arm (trigger arm) — sleeve capsule.
     ctx.fillStyle = MK_TEAL;
-    capsule(ctx, backShXF, backShYF, backHandXF, backHandYF, 0.14 * sc);
+    capsule(ctx, backShXF, backShYF, backHandXF, backHandYF, 0.13 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // hand
+    // Sleeve cuff (sky-blue band at the end of the sleeve).
     ctx.save();
     ctx.translate(backHandXF, backHandYF);
     ctx.rotate(Math.atan2(backHandYF - backShYF, backHandXF - backShXF));
     ctx.fillStyle = MK_SKY;
-    rr(ctx, -0.12 * sc, -0.08 * sc, 0.22 * sc, 0.16 * sc, 0.04 * sc);
+    rr(ctx, -0.10 * sc, -0.075 * sc, 0.16 * sc, 0.15 * sc, 0.035 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    ctx.fillStyle = MK_SKIN;
-    ctx.beginPath(); ctx.arc(0.08 * sc, 0, 0.07 * sc, 0, TAU); ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
     ctx.restore();
-    // Front arm (off-hand) — thicker.
+
+    // Front arm (off-hand on the forestock) — sleeve capsule.
     ctx.fillStyle = MK_TEAL;
-    capsule(ctx, frontShXF, frontShYF, frontHandXF, frontHandYF, 0.14 * sc);
+    capsule(ctx, frontShXF, frontShYF, frontHandXF, frontHandYF, 0.13 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
     ctx.save();
     ctx.translate(frontHandXF, frontHandYF);
     ctx.rotate(Math.atan2(frontHandYF - frontShYF, frontHandXF - frontShXF));
     ctx.fillStyle = MK_SKY;
-    rr(ctx, -0.12 * sc, -0.08 * sc, 0.22 * sc, 0.16 * sc, 0.04 * sc);
+    rr(ctx, -0.10 * sc, -0.075 * sc, 0.16 * sc, 0.15 * sc, 0.035 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    ctx.fillStyle = MK_SKIN;
-    ctx.beginPath(); ctx.arc(0.08 * sc, 0, 0.07 * sc, 0, TAU); ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
     ctx.restore();
 
-    // Musket — rotated to point ~at the camera during aim.
+    // Musket — translated to the back hand and rotated to the firing line.
     ctx.save();
     ctx.translate(backHandXF, backHandYF);
-    ctx.rotate(armAngF + Math.PI / 2);
+    ctx.rotate(rotAngF);
     drawMusket();
     drawMuzzleFlash(firePop);
+    // Tiny flash-pan spark off the lock during the strike (the priming
+    // powder ignites a beat before the main charge — adds drama).
+    if (firePop > 0.04) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const panX = 0.115 * sc * 1.18;     // ~lock-plate pan position
+      const panY = -L * 0.04 - 0.02 * sc;
+      ctx.fillStyle = `rgba(255,210,90,${0.75 * firePop})`;
+      ctx.beginPath();
+      ctx.arc(panX, panY, 0.10 * sc * firePop, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,255,220,${firePop})`;
+      ctx.beginPath();
+      ctx.arc(panX, panY, 0.05 * sc * firePop, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.restore();
+
+    // Knuckle/finger skin on TOP of the rifle so the grip reads as held.
+    drawKnuckles(backHandXF, backHandYF);
+    drawKnuckles(frontHandXF, frontHandYF);
 
     // Head + hat go ABOVE the front arm so the eyes aren't hidden.
     // Whole head + hat + plume + eyes scales up around the chin pivot.
@@ -8301,8 +6230,15 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
       ctx.translate(0, pY);
       ctx.scale(HEAD_S, HEAD_S);
       ctx.translate(0, -pY);
+      // Hair backdrop BEHIND the face so the side strips and falling
+      // locks fill out the silhouette to match the back view.
+      drawHairFront(0);
       drawSkinFront(0);
       drawTricornFront(0);
+      // Bangs hang from below the brim onto the upper face (drawn AFTER
+      // the hat so they aren't swallowed by the brim shadow, but BEFORE
+      // the eyes so the eyes/lashes still read clearly over them).
+      drawBangsFront(0);
       // Plume rises from the side of the tricorn (right side of head).
       ctx.save();
       ctx.translate(0.20 * sc, headY - 0.30 * sc);
@@ -8350,6 +6286,49 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     };
     drawBackLeg(-1, liftL);
     drawBackLeg(1, liftR);
+
+    // ── back-view firing animation ─────────────────────────────────────
+    // Mirror of the front-view firing motion, but viewed from behind:
+    // at rest the rifle is slung diagonally across her back (barrel
+    // up-right past the right shoulder); during attack she swings it
+    // forward and pulls the butt into the right shoulder pocket so the
+    // barrel ends up horizontal in the screen plane (pointing toward +x,
+    // i.e. toward the target). Position + rotation lerp continuously as
+    // `shoulder` rises 0→1, with a brief muzzle-climb + back-kick on the
+    // strike frame to read as recoil.
+    const recoilKickB = strikePhase * (1 - recoverPhase);
+    const armAngB = lerp(-Math.PI / 4, 0, shoulder) - 0.22 * recoilKickB;
+    const rotAngB = armAngB + Math.PI / 2;
+    const cAngB = Math.cos(rotAngB), sAngB = Math.sin(rotAngB);
+    // Back hand (wrist of stock) — lerps from slung-grip position into
+    // the right shoulder pocket as she raises the rifle.
+    const backHandXB = lerp(0.28 * sc, 0.32 * sc, shoulder)
+                     - recoilKickB * 0.10 * sc;
+    const backHandYB = lerp(shoY + 0.16 * sc, shoY + 0.10 * sc, shoulder)
+                     - recoilKickB * 0.04 * sc;
+    // Front hand grips the FORESTOCK — computed from the same canonical
+    // rifle point used in the front view so the rig is symmetric.
+    const forestockLocalYB = -L * 0.30;
+    const frontHandXB = backHandXB + (-forestockLocalYB * sAngB);
+    const frontHandYB = backHandYB + ( forestockLocalYB * cAngB);
+    // Shoulder twist toward the firing line (same as front view).
+    const twistB = shoulder;
+    const backShXB  = lerp(0.40, 0.30, twistB) * sc;
+    const backShYB  = shoY + 0.20 * sc;
+    const frontShXB = lerp(-0.40, -0.06, twistB) * sc;
+    const frontShYB = shoY + 0.20 * sc;
+
+    // ── Pass 1: rifle drawn BEHIND the bodice at the lerped position.
+    // At rest this is the slung-on-the-back silhouette (most of the
+    // rifle is hidden by the body, only the upper barrel + bayonet show
+    // above the shoulder). As `shoulder` rises, the rifle lifts and
+    // rotates toward horizontal; pass 2 below cross-fades in to reveal
+    // the parts that are still covered by the bodice during firing.
+    ctx.save();
+    ctx.translate(backHandXB, backHandYB);
+    ctx.rotate(rotAngB);
+    drawMusket();
+    ctx.restore();
 
     // ── hourglass back panel + A-line short skirt ──
     // Single continuous silhouette: wide shoulders, cinched at the waist
@@ -8426,13 +6405,87 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
       ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.018 * sc; ctx.stroke();
     }
 
-    // ── musket slung over one shoulder, barrel up-back ──
-    {
+    // ── Pass 2: arms + rifle (firing pose) drawn ON TOP of the bodice.
+    // Cross-faded by `liftAlphaB` so this pass is invisible at rest and
+    // ramps up during the windup. Because both passes use the SAME lerped
+    // (backHandXB, backHandYB, rotAngB), the rifle stays in one place
+    // visually — pass 2 simply "uncovers" the parts of the rifle that
+    // pass 1 was hiding behind the body, plus draws the arms reaching
+    // out to grip it and the muzzle flash + flash-pan spark on the
+    // strike frame.
+    const liftAlphaB = clamp01((shoulder - 0.28) / 0.20);
+    if (liftAlphaB > 0.01) {
       ctx.save();
-      ctx.translate(0.36 * sc, shoY + 0.18 * sc);
-      ctx.rotate(0.55);              // tilted across the back, barrel up-right
-      // The musket draws barrel-up; ground its grip near the shoulder.
+      ctx.globalAlpha *= liftAlphaB;
+
+      // Back arm (trigger arm) — capsule from shoulder to wrist.
+      ctx.fillStyle = MK_TEAL;
+      capsule(ctx, backShXB, backShYB, backHandXB, backHandYB, 0.13 * sc);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
+      // Back sleeve cuff.
+      ctx.save();
+      ctx.translate(backHandXB, backHandYB);
+      ctx.rotate(Math.atan2(backHandYB - backShYB, backHandXB - backShXB));
+      ctx.fillStyle = MK_SKY;
+      rr(ctx, -0.10 * sc, -0.075 * sc, 0.16 * sc, 0.15 * sc, 0.035 * sc);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
+      ctx.restore();
+
+      // Front arm (off-hand on the forestock) — capsule across the chest.
+      ctx.fillStyle = MK_TEAL;
+      capsule(ctx, frontShXB, frontShYB, frontHandXB, frontHandYB, 0.13 * sc);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
+      ctx.save();
+      ctx.translate(frontHandXB, frontHandYB);
+      ctx.rotate(Math.atan2(frontHandYB - frontShYB, frontHandXB - frontShXB));
+      ctx.fillStyle = MK_SKY;
+      rr(ctx, -0.10 * sc, -0.075 * sc, 0.16 * sc, 0.15 * sc, 0.035 * sc);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
+      ctx.restore();
+
+      // Rifle (in front pass) + muzzle flash + pan spark.
+      ctx.save();
+      ctx.translate(backHandXB, backHandYB);
+      ctx.rotate(rotAngB);
       drawMusket();
+      drawMuzzleFlash(firePop);
+      if (firePop > 0.04) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const panX = 0.115 * sc * 1.18;     // ~lock-plate pan position
+        const panY = -L * 0.04 - 0.02 * sc;
+        ctx.fillStyle = `rgba(255,210,90,${0.75 * firePop})`;
+        ctx.beginPath();
+        ctx.arc(panX, panY, 0.10 * sc * firePop, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,220,${firePop})`;
+        ctx.beginPath();
+        ctx.arc(panX, panY, 0.05 * sc * firePop, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // Knuckle skin on each grip point — fingers wrap visibly around
+      // the wrist + forestock from in front of the rifle.
+      const drawKnucklesB = (hx, hy) => {
+        ctx.fillStyle = MK_SKIN;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 0.058 * sc, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
+        ctx.fillStyle = MK_SKIN_SH;
+        ctx.beginPath();
+        ctx.arc(hx, hy + 0.024 * sc, 0.032 * sc, 0, TAU);
+        ctx.fill();
+      };
+      drawKnucklesB(backHandXB, backHandYB);
+      drawKnucklesB(frontHandXB, frontHandYB);
+
       ctx.restore();
     }
 
