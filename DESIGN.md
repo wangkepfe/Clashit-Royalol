@@ -101,16 +101,24 @@ Princess towers is destroyed, or the King itself takes any damage.
 
 Both players use the **same 8-card deck**, shuffled independently per player per seed.
 
-| Card      | Cost | Kind  | Count | HP   | Dmg | Hit(s) | Range | Speed | Air? | Targets        |
-|-----------|------|-------|-------|------|-----|--------|-------|-------|------|----------------|
-| Knight    | 3    | troop | 1     | 1766 | 202 | 1.2    | 1.2   | 1.00  | no   | ground         |
-| Archers   | 3    | troop | 2     | 304  | 112 | 0.9    | 5.0   | 1.00  | no   | ground + air   |
-| Goblins   | 2    | troop | 4     | 202  | 120 | 1.1    | 0.5   | 2.00  | no   | ground         |
-| Giant     | 5    | troop | 1     | 3968 | 253 | 1.5    | 1.2   | 0.75  | no   | buildings only |
-| Minions   | 3    | troop | 3     | 230  | 107 | 1.1    | 2.5   | 1.50  | yes  | ground + air   |
-| Musketeer | 4    | troop | 1     | 721  | 217 | 1.0    | 6.0   | 1.00  | no   | ground + air   |
-| Fireball  | 4    | spell | —     | —    | 688 | —      | 2.5r  | —     | —    | area (207 → towers) |
-| Arrows    | 3    | spell | —     | —    | 366 | —      | 3.5r  | —     | —    | area (93 → towers)  |
+| Card      | Cost | Kind     | Count | HP   | Dmg | Hit(s) | Range | Speed | Air? | Targets        |
+|-----------|------|----------|-------|------|-----|--------|-------|-------|------|----------------|
+| Knight    | 3    | troop    | 1     | 1766 | 202 | 1.2    | 1.2   | 1.00  | no   | ground         |
+| Archers   | 3    | troop    | 2     | 304  | 112 | 0.9    | 5.0   | 1.00  | no   | ground + air   |
+| Goblins   | 2    | troop    | 4     | 202  | 120 | 1.1    | 0.5   | 2.00  | no   | ground         |
+| Giant     | 5    | troop    | 1     | 3968 | 253 | 1.5    | 1.2   | 0.75  | no   | buildings only |
+| Cannon    | 3    | building | 1     | 824  | 202 | 1.0    | 5.5   | 0     | no   | ground         |
+| Musketeer | 4    | troop    | 1     | 721  | 217 | 1.0    | 6.0   | 1.00  | no   | ground + air   |
+| Fireball  | 4    | spell    | —     | —    | 688 | —      | 2.5r  | —     | —    | area (207 → towers) |
+| Arrows    | 3    | spell    | —     | —    | 366 | —      | 3.5r  | —     | —    | area (93 → towers)  |
+
+> **Cannon** is a defensive **building** — it's stationary, self-destructs after
+> a **30-second lifetime** regardless of HP, and cannot target air troops.
+> Its real Tournament-Standard (Level 11) stats are 824 hp / 202 dmg / 1.0 s
+> hit speed / 5.5-tile range / 30 s lifetime / projectile speed 1000 (÷60 =
+> 16.67 tiles/s, real *TowerCannonball*), straight off Liquipedia + the
+> official `cr-csv` `buildings.csv`. **Minions** is kept in code as a fallback
+> sprite/rendering path but excluded from `DECK` — Cannon takes its slot.
 
 All values are **real Clash Royale data at Tournament Standard (Level 11)** — the
 long-standing competitive reference. Source: Liquipedia (current, 2026 patch notes)
@@ -122,9 +130,10 @@ range (~5.5 tiles, slightly beyond a ranged unit's range) is the one engine
 convention — it isn't a cleanly published per-card stat. All values live in
 `src/cards.js`.
 
-**Design intent of this set:** a tank (Giant), a mini-tank (Knight), swarm (Goblins/Minions),
-ranged support (Archers/Musketeer), an air unit (Minions), single-target spell (Fireball),
-swarm-clear spell (Arrows). Enough rock-paper-scissors for strategy to matter.
+**Design intent of this set:** a tank (Giant), a mini-tank (Knight), swarm (Goblins),
+ranged support (Archers/Musketeer), a defensive building (Cannon), single-target spell
+(Fireball), swarm-clear spell (Arrows). Enough rock-paper-scissors for strategy to matter.
+(Minions — the original air-unit slot — remains coded but is not in the live deck.)
 
 ---
 

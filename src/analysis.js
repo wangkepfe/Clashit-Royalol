@@ -228,6 +228,10 @@ export function formatTrace(state) {
       );
     } else if (e.type === 'towerDestroyed') {
       L.push(`${t}  *** ${e.tower} ${at(e)} DESTROYED by ${e.byName || 'P' + e.by} ***`);
+    } else if (e.type === 'buildingDestroyed') {
+      L.push(`${t}  ## ${e.name} ${at(e)} DESTROYED by ${e.byName || 'P' + e.by} ##`);
+    } else if (e.type === 'buildingExpired') {
+      L.push(`${t}  ## ${e.name} ${at(e)} expired (lifetime ended) ##`);
     } else if (e.type === 'kingActivated') {
       L.push(`${t}  ${e.tower} ACTIVATED (${e.cause})`);
     } else if (e.type === 'end') {

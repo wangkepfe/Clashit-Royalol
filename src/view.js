@@ -56,10 +56,14 @@ export function buildView(state, owner) {
     maxHp: u.maxHp,
     flying: u.flying,
     range: u.def.range,
-    speed: u.def.speed,
+    speed: u.def.speed || 0, // buildings are stationary (no speed)
     dmg: u.def.dmg,
     deploying: u.deployTimer > 0,
     targetId: u.targetId,
+    // Building-specific fields (undefined for troops so bots can detect them).
+    building: !!u._building,
+    lifetime: u._building ? Math.max(0, u.lifetime) : undefined,
+    maxLifetime: u._building ? u.maxLifetime : undefined,
   }));
 
   const projectiles = state.projectiles.map((p) => ({

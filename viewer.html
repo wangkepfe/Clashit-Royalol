@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Asset Viewer — Clashit Royalol</title>
+<style>
+  :root {
+    --bg:#0d141d; --panel:#161f2b; --line:#2a3a4b; --p0:#46b1ff; --p1:#ff6b66;
+    --txt:#eef4fa; --mut:#8499ad; --elix:#c46be8; --canvas:#22344a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--txt);
+    font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  .ctrl { display: flex; gap: 6px; align-items: center; }
+  .ctrl label { color: var(--mut); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .5px; }
+  select, input, button {
+    background: #0d141d; color: var(--txt); border: 1px solid var(--line);
+    border-radius: 5px; padding: 5px 8px; font: inherit;
+  }
+  button { cursor: pointer; background: #1f3247; }
+  button:hover { background: #27425e; }
+  input[type=range] { padding: 0; vertical-align: middle; }
+
+  main { padding: 14px 16px 60px; }
+  section { margin: 0 0 28px; }
+  section h2 {
+    font-size: 13px; color: var(--mut); margin: 18px 0 10px;
+    text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+    border-bottom: 1px solid var(--line); padding-bottom: 4px;
+  }
+
+  /* Grid layout: 5 rows (states) × 4 columns (views) */
+  .grid {
+    display: grid;
+    grid-template-columns: 90px repeat(4, 1fr);
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+  }
+  .grid .head, .grid .row-label {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--mut); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .5px; font-weight: 600;
+  }
+  .grid .head { padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .grid .row-label { writing-mode: horizontal-tb; justify-content: flex-end;
+    padding-right: 8px; color: var(--txt); font-weight: 700; }
+  .cell {
+    background: var(--canvas); border-radius: 6px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 220px;
+  }
+  .cell canvas { display: block; }
+  .cell .tag {
+    position: absolute; top: 6px; right: 8px; color: rgba(255,255,255,.45);
+    font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  /* Simple horizontal strips for towers, cannon, projectiles. */
+  .strip {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 200px;
+    gap: 8px; overflow-x: auto; padding: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .strip .cell { min-height: 200px; min-width: 200px; }
+  .cell .label {
+    position: absolute; bottom: 6px; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,.65); font-size: 11px; pointer-events: none;
+  }
+
+  .legend { color: var(--mut); font-size: 11px; max-width: 720px; }
+  .legend code { color: var(--txt); background: #0d141d; padding: 1px 5px;
+    border-radius: 3px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Asset Viewer</h1>
+  <div class="ctrl">
+    <label>Asset</label>
+    <select id="asset"></select>
+  </div>
+  <div class="ctrl">
+    <label>Team</label>
+    <select id="owner">
+      <option value="0">P0 (blue)</option>
+      <option value="1">P1 (red)</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Tile px</label>
+    <input id="tile" type="range" min="14" max="56" value="28" style="width:160px" />
+    <span id="tileVal" style="width:32px; text-align:right; color:var(--mut)">28</span>
+  </div>
+  <div class="ctrl">
+    <label>Background</label>
+    <select id="bg">
+      <option value="canvas">Game blue</option>
+      <option value="dark">Dark grey</option>
+      <option value="checker">Checkerboard</option>
+      <option value="white">White</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <button id="pause">Pause</button>
+    <button id="reset">Reset time</button>
+  </div>
+</header>
+
+<main>
+
+  <section>
+    <h2>Character — all states × all views</h2>
+    <div class="grid" id="characterGrid"></div>
+    <div class="legend" style="margin-top:8px">
+      Each cell is animated live. <b>Idle</b> = standing breath, <b>Walking</b> = gait + lean,
+      <b>Attacking</b> = full attack swing on loop with a short rest, <b>Spawning</b> = repeating deploy ring-up,
+      <b>Hurt</b> = standing with a periodic hit-flash (also forces <code>hpFrac=0.4</code>).
+      The four <b>views</b> are <code>side</code> with <code>face=+1</code>, <code>side</code> with <code>face=-1</code>,
+      <code>front</code>, and <code>back</code>.
+    </div>
+  </section>
+
+  <section>
+    <h2>Towers</h2>
+    <div class="strip" id="towerStrip"></div>
+  </section>
+
+  <section>
+    <h2>Cannon (building)</h2>
+    <div class="strip" id="cannonStrip"></div>
+  </section>
+
+  <section>
+    <h2>Projectiles &amp; spell effects</h2>
+    <div class="strip" id="projStrip"></div>
+  </section>
+
+</main>
+
+<script type="module" src="./src/viewer.js"></script>
+</body>
+</html>

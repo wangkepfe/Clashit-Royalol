@@ -24,7 +24,13 @@
 
 const SPEED = { slow: 0.75, medium: 1.0, fast: 1.5, veryFast: 2.0 };
 // Projectile travel speed: CR Speed unit ÷ 60 = tiles/second.
-const PROJ = { arrow: 10.0, musketBullet: 1000 / 60, fireball: 10.0, arrowsSpell: 1100 / 60 };
+const PROJ = {
+  arrow: 10.0,
+  musketBullet: 1000 / 60,
+  cannonBall: 1000 / 60,    // real TowerCannonball Speed = 1000
+  fireball: 10.0,
+  arrowsSpell: 1100 / 60,
+};
 
 export const CARDS = {
   Knight: {
@@ -63,6 +69,25 @@ export const CARDS = {
     flying: false, targetsGround: true, targetsAir: true, buildingsOnly: false,
     radius: 0.5, mass: 5, projectileSpeed: PROJ.musketBullet,
   },
+  // Buildings: stationary 3×3-tile defensive structures with a real lifetime
+  // (self-destruct after `lifetime` seconds even at full HP). They have no
+  // `speed`, never move, and (for Cannon) cannot target air troops. Real CR
+  // Cannon at Tournament Standard (Level 11) — Liquipedia + cr-csv
+  // buildings.csv: SightRange 5500 → 5.5; Range 5500 → 5.5; LifeTime 30000 →
+  // 30s; Projectile TowerCannonball Speed 1000 → ÷60. HitSpeed 1.0s reflects
+  // the 2025-03-04 patch (was 0.9s).
+  // NOTE: radius set to 1.5 (NOT real-CR's 0.6) so the Cannon occupies a full
+  // 3×3-tile footprint: the camera views from below and the sprite reads as a
+  // small fort, so units pathing around it now match the visible body and a
+  // melee attacker can reach any side of the 3-tile-wide structure.
+  Cannon: {
+    cost: 3, kind: 'building', count: 1,
+    hp: 824, dmg: 202, hitSpeed: 1.0, range: 5.5, sight: 5.5,
+    flying: false, targetsGround: true, targetsAir: false, buildingsOnly: false,
+    radius: 1.5, mass: 1000,    // 3×3 footprint; huge mass = unpushable
+    lifetime: 30.0,             // real CR LifeTime: vanishes at 30s
+    projectileSpeed: PROJ.cannonBall,
+  },
   // Spells: dmg = damage to troops; towerDmg = reduced crown-tower damage.
   // projectileSpeed: thrown from the caster's King tower toward the aim point
   // (non-homing) — slow spells must be aimed ahead of moving targets.
@@ -76,7 +101,14 @@ export const CARDS = {
   },
 };
 
-export const DECK = Object.keys(CARDS); // all 8, shared by both players
+// Active 8-card deck shared by both players. Minions is intentionally defined
+// above (and renderable) but excluded from the live deck — Cannon takes its
+// slot. To put Minions back in rotation, swap them here.
+export const DECK = [
+  'Knight', 'Archers', 'Goblins', 'Giant',
+  'Cannon', 'Musketeer',
+  'Fireball', 'Arrows',
+];
 
 // Cluster offsets for multi-unit cards, in tiles, relative to deploy point.
 function spawnOffsets(count) {
@@ -123,6 +155,40 @@ export function deployCard(state, owner, cardName, x, y, applyDamage) {
 
   if (def.kind === 'spell') {
     applySpell(state, owner, cardName, x, y, applyDamage);
+    return;
+  }
+
+  if (def.kind === 'building') {
+    // Buildings are stationary defensive structures (Cannon = 3×3 footprint
+    // via def.radius=1.5). Spawn one entity at the deploy point — no cluster
+    // offsets, no river clamp (placement legality is already validated in
+    // the engine).
+    const A = state.config.arena;
+    const ux = clamp(x, 0.5, A.width - 0.5);
+    const uy = clamp(y, 0.5, A.height - 0.5);
+    const tag = owner === 0 ? 'A' : 'B';
+    const key = `${owner}:${cardName}`;
+    const n = (state.nameCounters[key] = (state.nameCounters[key] || 0) + 1);
+    state.units.push({
+      id: state.nextId++,
+      name: `${cardName}_${tag}_${n}`,
+      owner,
+      card: cardName,
+      def,
+      x: ux,
+      y: uy,
+      hp: def.hp,
+      maxHp: def.hp,
+      flying: false,
+      cooldown: 0,
+      deployTimer: state.config.deployTime,
+      targetId: null,
+      // Building-only fields:
+      _building: true,           // engine flag: canHit shortcut + skip movement
+      lifetime: def.lifetime,    // self-destruct timer (seconds)
+      maxLifetime: def.lifetime, // remembered for HUD / view bars
+      aimAngle: 0,               // current turret angle (radians); rig animates this
+    });
     return;
   }
 

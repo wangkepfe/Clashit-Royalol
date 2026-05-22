@@ -133,6 +133,53 @@ export function getAnim(u, dt, target) {
 export function sweepAnim(state, dt) {
   const alive = new Set();
   for (const u of state.units) alive.add(u.id);
+
+  // ── Cannon rig sweep (separate map from troop anim) ─────────────────────
+  // Cannons keep persistent aim/recoil state; when the unit dies (HP=0) or
+  // the lifetime expires we emit a rubble + smoke poof and drop the rig.
+  for (const [id, ar] of cannonRig) {
+    if (alive.has(id) && ar.seen) { ar.seen = false; continue; }
+    if (!alive.has(id)) {
+      if (ar.wasCannon) {
+        // Mixed shards: 4 broken-wood, 4 iron-band fragments, 3 brass bits,
+        // ringed by 5 grey smoke puffs that linger longer than the shards.
+        const shards = [];
+        const N = 11;
+        for (let i = 0; i < N; i++) {
+          const ang = (i / N) * TAU + (Math.random() - 0.5) * 0.55;
+          shards.push({
+            ang,
+            speed: 0.80 + Math.random() * 0.65,
+            rot0: Math.random() * TAU,
+            spin: (Math.random() - 0.5) * 14,
+            kind: i % 3,  // 0=wood, 1=iron, 2=brass
+          });
+        }
+        const puffs = [];
+        for (let i = 0; i < 5; i++) {
+          const ang = (i / 5) * TAU + Math.random() * 0.4;
+          puffs.push({
+            ang,
+            speed: 0.45 + Math.random() * 0.30,
+            r0: 0.40 + Math.random() * 0.25,
+            life: 0.65 + Math.random() * 0.25,
+          });
+        }
+        poofs.push({
+          x: ar.lx, y: ar.ly,
+          owner: ar.owner, face: 1,
+          t: 1,
+          dur: 0.62,
+          scale: 1.05,
+          cannon: true,
+          shards,
+          puffs,
+        });
+      }
+      cannonRig.delete(id);
+    }
+  }
+
   for (const [id, a] of anim) {
     if (alive.has(id) && a.seen) { a.seen = false; continue; }
     if (!alive.has(id)) {
@@ -3176,6 +3223,10 @@ export function drawArcher(ctx, gx, gy, tile, p) {
   const hipY  = -1.00 * sc;
   const shoY  = -1.78 * sc;
   const headY = -2.18 * sc + headBob;
+  // Chibi cuteness boost: scales the head/hood/face/eyes up around the chin
+  // pivot so the silhouette reads as a stylized girly archer.
+  const HEAD_S = 1.30;
+  const HEAD_PIVOT_Y = () => headY + 0.18 * sc;
 
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
@@ -3732,35 +3783,58 @@ export function drawArcher(ctx, gx, gy, tile, p) {
       const footX    = side * legSpread + swingX;
       const kneeBend = side * legSpread + swingX * 0.55;
       const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // soft leggings (mint cloth-pants)
-      ctx.fillStyle = isBack ? A_DARK : A_MINT;
-      capsule(ctx, hipX, hipY, kneeBend, kneeY, 0.14 * sc);
+      // bare peach legs (no leggings) — slimmer capsule for girly silhouette
+      ctx.fillStyle = isBack ? A_SKIN_SH : A_SKIN;
+      capsule(ctx, hipX, hipY + 0.08 * sc, kneeBend, kneeY, 0.11 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
       // shin
-      ctx.fillStyle = isBack ? A_DARK : A_MINT;
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.02 * sc, 0.12 * sc);
+      ctx.fillStyle = isBack ? A_SKIN_SH : A_SKIN;
+      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.30 * sc, 0.095 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // dark teal shadow stripe down the back of the calf
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      // subtle peach shadow on the back of the calf
       if (!isBack) {
-        ctx.fillStyle = `rgba(0,79,87,0.35)`;
-        capsule(ctx, kneeBend - 0.04 * sc, kneeY + 0.04 * sc,
-                     footX - 0.04 * sc, baseY - 0.08 * sc, 0.06 * sc);
+        ctx.fillStyle = `rgba(232,168,155,0.55)`;
+        capsule(ctx, kneeBend - 0.03 * sc, kneeY + 0.04 * sc,
+                     footX - 0.03 * sc, baseY - 0.32 * sc, 0.04 * sc);
         ctx.fill();
       }
-      // leather boot
+      // tall terracotta knee-high boot with cream cuff + lace ribbon
       ctx.fillStyle = A_LEATHER_D;
-      rr(ctx, footX - 0.22 * sc, baseY - 0.20 * sc, 0.46 * sc, 0.22 * sc, 0.06 * sc);
+      rr(ctx, footX - 0.20 * sc, baseY - 0.42 * sc, 0.42 * sc, 0.42 * sc, 0.08 * sc);
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
+      // lighter terracotta inner panel
       ctx.fillStyle = A_LEATHER;
-      rr(ctx, footX - 0.20 * sc, baseY - 0.18 * sc, 0.28 * sc, 0.10 * sc, 0.03 * sc);
+      rr(ctx, footX - 0.18 * sc, baseY - 0.40 * sc, 0.20 * sc, 0.34 * sc, 0.04 * sc);
       ctx.fill();
-      // gold-like cream lace dot
+      // cream folded cuff at the top of the boot
+      ctx.fillStyle = A_LIGHT;
+      rr(ctx, footX - 0.22 * sc, baseY - 0.44 * sc, 0.46 * sc, 0.08 * sc, 0.03 * sc);
+      ctx.fill();
+      ctx.strokeStyle = A_DARK; ctx.lineWidth = 0.018 * sc; ctx.stroke();
+      // dark sole stripe
+      ctx.fillStyle = A_OL;
+      rr(ctx, footX - 0.22 * sc, baseY - 0.05 * sc, 0.46 * sc, 0.05 * sc, 0.02 * sc);
+      ctx.fill();
+      // small red bow ribbon at the boot cuff (girly accent)
+      ctx.fillStyle = A_RED;
+      ctx.beginPath();
+      ctx.moveTo(footX + 0.06 * sc, baseY - 0.40 * sc);
+      ctx.lineTo(footX + 0.14 * sc, baseY - 0.46 * sc);
+      ctx.lineTo(footX + 0.14 * sc, baseY - 0.34 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(footX + 0.06 * sc, baseY - 0.40 * sc);
+      ctx.lineTo(footX - 0.02 * sc, baseY - 0.46 * sc);
+      ctx.lineTo(footX - 0.02 * sc, baseY - 0.34 * sc);
+      ctx.closePath();
+      ctx.fill();
       ctx.fillStyle = A_LIGHT;
       ctx.beginPath();
-      ctx.arc(footX + 0.12 * sc, baseY - 0.10 * sc, 0.026 * sc, 0, TAU);
+      ctx.arc(footX + 0.06 * sc, baseY - 0.40 * sc, 0.022 * sc, 0, TAU);
       ctx.fill();
       // foot-plant dust
       const plantA = Math.max(0, (isBack ? -sw : sw)) * p.moving;
@@ -3841,25 +3915,71 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     ctx.arc(0.18 * sc, hipY + 0.04 * sc, 0.050 * sc, 0, TAU);
     ctx.fill();
 
-    // Hem of cloak in front (small sliver of mint visible at waist).
+    // Short flared skirt of the dress (mint with dark teal underside + cream
+    // lace hem). Ends mid-thigh so the bare legs read clearly below.
     {
+      const hemY = hipY + 0.45 * sc;
       ctx.fillStyle = A_DARK;
       ctx.beginPath();
-      ctx.moveTo(-0.30 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.40 * sc + flutter * 0.2, hipY + 0.60 * sc);
-      ctx.quadraticCurveTo(-0.10 * sc, hipY + 0.66 * sc,
-                           0.10 * sc, hipY + 0.50 * sc);
-      ctx.lineTo(0.04 * sc, hipY + 0.06 * sc);
+      ctx.moveTo(-0.34 * sc, hipY + 0.06 * sc);
+      ctx.lineTo(-0.50 * sc + flutter * 0.3, hemY);
+      ctx.quadraticCurveTo(-0.10 * sc, hemY + 0.10 * sc,
+                           0.30 * sc + flutter * 0.2, hemY - 0.02 * sc);
+      ctx.lineTo(0.10 * sc, hipY + 0.06 * sc);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
+      // mint front panel (the lit side)
       ctx.fillStyle = A_MINT;
       ctx.beginPath();
       ctx.moveTo(-0.30 * sc, hipY + 0.06 * sc);
-      ctx.lineTo(-0.32 * sc + flutter * 0.15, hipY + 0.46 * sc);
-      ctx.lineTo(-0.04 * sc, hipY + 0.46 * sc);
-      ctx.lineTo(0.04 * sc, hipY + 0.06 * sc);
+      ctx.lineTo(-0.40 * sc + flutter * 0.2, hemY - 0.02 * sc);
+      ctx.quadraticCurveTo(-0.04 * sc, hemY,
+                           0.24 * sc + flutter * 0.15, hemY - 0.06 * sc);
+      ctx.lineTo(0.08 * sc, hipY + 0.06 * sc);
       ctx.closePath();
+      ctx.fill();
+      // cream scalloped lace along the hem (3 small scallops)
+      ctx.fillStyle = A_LIGHT;
+      ctx.strokeStyle = A_DARK_D;
+      ctx.lineWidth = 0.016 * sc;
+      for (let i = 0; i < 4; i++) {
+        const t = i / 3;
+        const sx = lerp(-0.40 * sc, 0.26 * sc, t) + flutter * 0.15 * (1 - t);
+        const sy = lerp(hemY - 0.02 * sc, hemY - 0.06 * sc, t);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.05 * sc, 0, Math.PI);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    // Cute red bow ribbon at the waist (girly accent on top of the belt).
+    {
+      ctx.fillStyle = A_RED;
+      ctx.beginPath();
+      ctx.moveTo(0.04 * sc, hipY + 0.02 * sc);
+      ctx.lineTo(0.18 * sc, hipY - 0.08 * sc);
+      ctx.lineTo(0.18 * sc, hipY + 0.12 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0.04 * sc, hipY + 0.02 * sc);
+      ctx.lineTo(-0.10 * sc, hipY - 0.08 * sc);
+      ctx.lineTo(-0.10 * sc, hipY + 0.12 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // bow knot
+      ctx.fillStyle = '#9a3539';
+      ctx.beginPath();
+      ctx.arc(0.04 * sc, hipY + 0.02 * sc, 0.040 * sc, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
+      ctx.fillStyle = A_LIGHT;
+      ctx.beginPath();
+      ctx.arc(0.024 * sc, hipY, 0.012 * sc, 0, TAU);
       ctx.fill();
     }
 
@@ -3912,11 +4032,31 @@ export function drawArcher(ctx, gx, gy, tile, p) {
 
     // Hood now wraps over the head. Drawn AFTER the back arm so that
     // when the arm reaches up the elbow disappears behind the shoulder.
+    // Whole head/hood/face is scaled up around the chin pivot for chibi cuteness.
     const hxS = 0;
-    drawHoodSide(hxS);
-    drawFaceShadow(hxS, true);
-    drawSkinSide(hxS);
-    drawEyeSide(hxS);
+    {
+      const pY = HEAD_PIVOT_Y();
+      ctx.save();
+      ctx.translate(0, pY);
+      ctx.scale(HEAD_S, HEAD_S);
+      ctx.translate(0, -pY);
+      drawHoodSide(hxS);
+      drawFaceShadow(hxS, true);
+      drawSkinSide(hxS);
+      drawEyeSide(hxS);
+      // Two cute orange-cream side bangs peeking from the hood opening.
+      ctx.fillStyle = A_LEATHER;
+      ctx.beginPath();
+      ctx.moveTo(hxS + 0.06 * sc, headY + 0.00 * sc);
+      ctx.quadraticCurveTo(hxS + 0.16 * sc, headY + 0.10 * sc,
+                           hxS + 0.10 * sc, headY + 0.22 * sc);
+      ctx.quadraticCurveTo(hxS + 0.06 * sc, headY + 0.10 * sc,
+                           hxS + 0.04 * sc, headY + 0.02 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
+      ctx.restore();
+    }
 
     // Bow arm (front).
     ctx.fillStyle = A_MINT;
@@ -3958,41 +4098,70 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.05 * sc;
     ctx.translate(sway, 0);
 
-    // Cloak side flaps behind the body (visible on both sides).
+    // Short flared dress side panels (dark teal back / mint front trim).
+    // Ends just above the knee so bare legs read clearly below.
     {
       const flR = Math.sin(tC) * (0.05 + p.moving * 0.10) * sc;
       const flL = Math.cos(tC * 1.1) * (0.05 + p.moving * 0.10) * sc;
-      const cg = ctx.createLinearGradient(0, shoY, 0, hipY + 0.6 * sc);
+      const skirtHemY = hipY + 0.45 * sc;
+      const cg = ctx.createLinearGradient(0, shoY, 0, skirtHemY);
       cg.addColorStop(0, A_DARK);
       cg.addColorStop(1, A_DARK_D);
       ctx.fillStyle = cg;
       ctx.beginPath();
       ctx.moveTo(-0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(-0.58 * sc + flL, hipY + 0.30 * sc,
-                           -0.38 * sc + flL * 0.5, hipY + 0.70 * sc);
-      ctx.quadraticCurveTo(-0.26 * sc, hipY + 0.30 * sc,
+      ctx.quadraticCurveTo(-0.58 * sc + flL, hipY + 0.20 * sc,
+                           -0.50 * sc + flL * 0.5, skirtHemY);
+      ctx.quadraticCurveTo(-0.26 * sc, skirtHemY + 0.06 * sc,
                            -0.26 * sc, shoY + 0.18 * sc);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(0.58 * sc + flR, hipY + 0.30 * sc,
-                           0.38 * sc + flR * 0.5, hipY + 0.70 * sc);
-      ctx.quadraticCurveTo(0.26 * sc, hipY + 0.30 * sc,
+      ctx.quadraticCurveTo(0.58 * sc + flR, hipY + 0.20 * sc,
+                           0.50 * sc + flR * 0.5, skirtHemY);
+      ctx.quadraticCurveTo(0.26 * sc, skirtHemY + 0.06 * sc,
                            0.26 * sc, shoY + 0.18 * sc);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      // Mint accent on the leading edges.
+      // Mint accent along the dress edge.
       ctx.strokeStyle = A_MINT;
       ctx.lineWidth = 0.028 * sc;
       ctx.beginPath();
       ctx.moveTo(-0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(-0.30 * sc, hipY + 0.20 * sc, -0.26 * sc, hipY + 0.66 * sc);
+      ctx.quadraticCurveTo(-0.30 * sc, hipY + 0.20 * sc, -0.48 * sc, skirtHemY - 0.02 * sc);
       ctx.moveTo(0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(0.30 * sc, hipY + 0.20 * sc, 0.26 * sc, hipY + 0.66 * sc);
+      ctx.quadraticCurveTo(0.30 * sc, hipY + 0.20 * sc, 0.48 * sc, skirtHemY - 0.02 * sc);
       ctx.stroke();
+      // Mint front skirt panel (a small flared piece in the middle).
+      ctx.fillStyle = A_MINT;
+      ctx.beginPath();
+      ctx.moveTo(-0.26 * sc, hipY + 0.04 * sc);
+      ctx.quadraticCurveTo(-0.36 * sc, (hipY + skirtHemY) * 0.5,
+                           -0.34 * sc, skirtHemY - 0.04 * sc);
+      ctx.quadraticCurveTo(0, skirtHemY + 0.04 * sc,
+                           0.34 * sc, skirtHemY - 0.04 * sc);
+      ctx.quadraticCurveTo(0.36 * sc, (hipY + skirtHemY) * 0.5,
+                           0.26 * sc, hipY + 0.04 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.75; ctx.stroke();
+      // cream scalloped lace hem
+      ctx.fillStyle = A_LIGHT;
+      ctx.strokeStyle = A_DARK_D;
+      ctx.lineWidth = 0.016 * sc;
+      for (let i = 0; i < 5; i++) {
+        const t = i / 4;
+        const sx = lerp(-0.34 * sc, 0.34 * sc, t);
+        const sy = skirtHemY - 0.04 * sc + Math.sin(t * Math.PI) * 0.04 * sc;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.05 * sc, 0, Math.PI);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
     }
 
     // Alternating leg lifts.
@@ -4002,28 +4171,50 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     const drawFrontLeg = (side, footLift) => {
       const x = side * legSpreadF;
       const footPt = baseY - footLift;
-      ctx.fillStyle = A_MINT;
-      capsule(ctx, x, hipY, x, footPt - 0.02 * sc, 0.14 * sc);
+      // bare peach legs (slimmer capsules)
+      ctx.fillStyle = A_SKIN;
+      capsule(ctx, x, hipY + 0.10 * sc, x, footPt - 0.36 * sc, 0.10 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // dark-teal shadow stripe down the outer side
-      ctx.fillStyle = `rgba(0,79,87,0.35)`;
-      capsule(ctx, x + side * 0.06 * sc, hipY + 0.08 * sc,
-                   x + side * 0.06 * sc, footPt - 0.10 * sc, 0.05 * sc);
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      // soft shadow down the outer side
+      ctx.fillStyle = `rgba(232,168,155,0.55)`;
+      capsule(ctx, x + side * 0.05 * sc, hipY + 0.16 * sc,
+                   x + side * 0.05 * sc, footPt - 0.40 * sc, 0.035 * sc);
       ctx.fill();
-      // knee highlight
-      const kY = (hipY + footPt) * 0.5;
-      ctx.fillStyle = A_MINT_HI;
-      ctx.beginPath();
-      ctx.arc(x - side * 0.04 * sc, kY - 0.04 * sc, 0.06 * sc, 0, TAU);
-      ctx.fill();
-      // leather boot
+      // tall terracotta knee-high boot with cream cuff
       ctx.fillStyle = A_LEATHER_D;
-      rr(ctx, x - 0.20 * sc, footPt - 0.20 * sc, 0.40 * sc, 0.22 * sc, 0.06 * sc);
+      rr(ctx, x - 0.18 * sc, footPt - 0.42 * sc, 0.36 * sc, 0.42 * sc, 0.08 * sc);
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
       ctx.fillStyle = A_LEATHER;
-      rr(ctx, x - 0.18 * sc, footPt - 0.18 * sc, 0.24 * sc, 0.10 * sc, 0.03 * sc);
+      rr(ctx, x - 0.16 * sc, footPt - 0.40 * sc, 0.18 * sc, 0.34 * sc, 0.04 * sc);
+      ctx.fill();
+      // cream cuff
+      ctx.fillStyle = A_LIGHT;
+      rr(ctx, x - 0.20 * sc, footPt - 0.44 * sc, 0.40 * sc, 0.08 * sc, 0.03 * sc);
+      ctx.fill();
+      ctx.strokeStyle = A_DARK; ctx.lineWidth = 0.018 * sc; ctx.stroke();
+      // sole
+      ctx.fillStyle = A_OL;
+      rr(ctx, x - 0.20 * sc, footPt - 0.05 * sc, 0.40 * sc, 0.05 * sc, 0.02 * sc);
+      ctx.fill();
+      // small red bow ribbon at the cuff (girly accent)
+      ctx.fillStyle = A_RED;
+      ctx.beginPath();
+      ctx.moveTo(x, footPt - 0.40 * sc);
+      ctx.lineTo(x + 0.08 * sc, footPt - 0.46 * sc);
+      ctx.lineTo(x + 0.08 * sc, footPt - 0.34 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, footPt - 0.40 * sc);
+      ctx.lineTo(x - 0.08 * sc, footPt - 0.46 * sc);
+      ctx.lineTo(x - 0.08 * sc, footPt - 0.34 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = A_LIGHT;
+      ctx.beginPath();
+      ctx.arc(x, footPt - 0.40 * sc, 0.022 * sc, 0, TAU);
       ctx.fill();
       if (footLift < 0.02 * sc && p.moving > 0.2) {
         ctx.fillStyle = `rgba(180,180,170,${0.22 * p.moving})`;
@@ -4099,6 +4290,50 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     ctx.beginPath();
     ctx.arc(0, hipY + 0.04 * sc, 0.050 * sc, 0, TAU);
     ctx.fill();
+    // Cute red bow ribbon centered at the waist (girly accent).
+    {
+      ctx.fillStyle = A_RED;
+      ctx.beginPath();
+      ctx.moveTo(0, hipY + 0.04 * sc);
+      ctx.lineTo(0.16 * sc, hipY - 0.10 * sc);
+      ctx.lineTo(0.16 * sc, hipY + 0.16 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, hipY + 0.04 * sc);
+      ctx.lineTo(-0.16 * sc, hipY - 0.10 * sc);
+      ctx.lineTo(-0.16 * sc, hipY + 0.16 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // bow knot
+      ctx.fillStyle = '#9a3539';
+      ctx.beginPath();
+      ctx.arc(0, hipY + 0.04 * sc, 0.045 * sc, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
+      ctx.fillStyle = A_LIGHT;
+      ctx.beginPath();
+      ctx.arc(-0.015 * sc, hipY + 0.024 * sc, 0.015 * sc, 0, TAU);
+      ctx.fill();
+      // dangling ribbon tails
+      ctx.fillStyle = A_RED;
+      ctx.beginPath();
+      ctx.moveTo(-0.03 * sc, hipY + 0.07 * sc);
+      ctx.lineTo(-0.08 * sc, hipY + 0.28 * sc);
+      ctx.lineTo(-0.02 * sc, hipY + 0.30 * sc);
+      ctx.lineTo(0.02 * sc, hipY + 0.10 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0.03 * sc, hipY + 0.07 * sc);
+      ctx.lineTo(0.08 * sc, hipY + 0.28 * sc);
+      ctx.lineTo(0.02 * sc, hipY + 0.30 * sc);
+      ctx.lineTo(-0.02 * sc, hipY + 0.10 * sc);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // Quiver edge peeking over the left shoulder (just a sliver of the tube).
     {
@@ -4193,12 +4428,33 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     drawBow(drawAmt, showArrowF);
     ctx.restore();
 
-    // Head + hood + face go on top.
+    // Head + hood + face go on top. Whole head scales up for chibi cuteness.
     const hxF = 0;
-    drawHoodFront(hxF);
-    drawFaceShadow(hxF, false);
-    drawSkinFront(hxF);
-    drawEyesFront(hxF);
+    {
+      const pY = HEAD_PIVOT_Y();
+      ctx.save();
+      ctx.translate(0, pY);
+      ctx.scale(HEAD_S, HEAD_S);
+      ctx.translate(0, -pY);
+      drawHoodFront(hxF);
+      drawFaceShadow(hxF, false);
+      drawSkinFront(hxF);
+      drawEyesFront(hxF);
+      // Two symmetric peach-blonde bangs peeking from under the hood.
+      ctx.fillStyle = A_LEATHER;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(hxF + side * 0.12 * sc, headY - 0.02 * sc);
+        ctx.quadraticCurveTo(hxF + side * 0.22 * sc, headY + 0.08 * sc,
+                             hxF + side * 0.14 * sc, headY + 0.22 * sc);
+        ctx.quadraticCurveTo(hxF + side * 0.10 * sc, headY + 0.10 * sc,
+                             hxF + side * 0.08 * sc, headY - 0.02 * sc);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
+      }
+      ctx.restore();
+    }
 
   // ── BACK VIEW ──────────────────────────────────────────────────────────
   } else {
@@ -4211,25 +4467,39 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     const drawBackLeg = (side, footLift) => {
       const x = side * legSpreadB;
       const footPt = baseY - footLift;
-      ctx.fillStyle = A_DARK;
-      capsule(ctx, x, hipY + 0.02 * sc, x, footPt - 0.02 * sc, 0.14 * sc);
+      // bare peach legs from the back
+      ctx.fillStyle = A_SKIN;
+      capsule(ctx, x, hipY + 0.10 * sc, x, footPt - 0.36 * sc, 0.10 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.fillStyle = A_MINT;
-      capsule(ctx, x, hipY + 0.20 * sc, x, footPt - 0.18 * sc, 0.06 * sc);
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      // subtle peach shadow stripe
+      ctx.fillStyle = `rgba(232,168,155,0.55)`;
+      capsule(ctx, x - side * 0.04 * sc, hipY + 0.16 * sc,
+                   x - side * 0.04 * sc, footPt - 0.40 * sc, 0.035 * sc);
       ctx.fill();
-      // leather boot back
+      // terracotta knee-high boot back with cream cuff
       ctx.fillStyle = A_LEATHER_D;
-      rr(ctx, x - 0.18 * sc, footPt - 0.18 * sc, 0.36 * sc, 0.20 * sc, 0.06 * sc);
+      rr(ctx, x - 0.18 * sc, footPt - 0.42 * sc, 0.36 * sc, 0.42 * sc, 0.08 * sc);
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.strokeStyle = A_LEATHER; ctx.lineWidth = 0.022 * sc;
+      ctx.fillStyle = A_LIGHT;
+      rr(ctx, x - 0.20 * sc, footPt - 0.44 * sc, 0.40 * sc, 0.08 * sc, 0.03 * sc);
+      ctx.fill();
+      ctx.strokeStyle = A_DARK; ctx.lineWidth = 0.018 * sc; ctx.stroke();
+      // small red bow ribbon at the back of the cuff
+      ctx.fillStyle = A_RED;
       ctx.beginPath();
-      ctx.moveTo(x - 0.14 * sc, footPt - 0.16 * sc);
-      ctx.lineTo(x + 0.06 * sc, footPt - 0.04 * sc);
-      ctx.moveTo(x + 0.06 * sc, footPt - 0.16 * sc);
-      ctx.lineTo(x - 0.14 * sc, footPt - 0.04 * sc);
-      ctx.stroke();
+      ctx.moveTo(x, footPt - 0.40 * sc);
+      ctx.lineTo(x + 0.08 * sc, footPt - 0.46 * sc);
+      ctx.lineTo(x + 0.08 * sc, footPt - 0.34 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, footPt - 0.40 * sc);
+      ctx.lineTo(x - 0.08 * sc, footPt - 0.46 * sc);
+      ctx.lineTo(x - 0.08 * sc, footPt - 0.34 * sc);
+      ctx.closePath();
+      ctx.fill();
     };
     drawBackLeg(-1, liftL);
     drawBackLeg(1, liftR);
@@ -4314,9 +4584,17 @@ export function drawArcher(ctx, gx, gy, tile, p) {
       ctx.restore();
     }
 
-    // Hood back (covers head from behind).
+    // Hood back (covers head from behind). Scaled up for chibi cuteness.
     const hxB = 0;
-    drawHoodBack(hxB);
+    {
+      const pY = HEAD_PIVOT_Y();
+      ctx.save();
+      ctx.translate(0, pY);
+      ctx.scale(HEAD_S, HEAD_S);
+      ctx.translate(0, -pY);
+      drawHoodBack(hxB);
+      ctx.restore();
+    }
   }
 
   // Hit flash (white wash over the whole figure).
@@ -6739,6 +7017,11 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   const hipY  = -1.02 * sc;
   const shoY  = -1.82 * sc;
   const headY = -2.24 * sc + headBob;
+  // Chibi cuteness boost: scales the head/hat/face up around the chin pivot.
+  // Bumped from 1.30 → 1.85 so her face reads MUCH bigger relative to the
+  // body (strong chibi heroine proportions, head ~1.4x body width).
+  const HEAD_S = 1.85;
+  const HEAD_PIVOT_Y = () => headY + 0.18 * sc;
 
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
@@ -6750,107 +7033,239 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   // along local -y (UP). Caller rotates by `armAng + π/2` so armAng matches
   // the firing direction in local space (+x = forward). Length stays in
   // sc-units so the gun scales with the figure.
+  // Bigger, cooler version: longer barrel, thicker gold engraved bands,
+  // sky-blue stock with gold filigree heart, a bayonet at the muzzle, and
+  // a brass starburst on the lock plate.
+  const L = 2.10 * sc;                    // total length (was 1.65)
   const drawMusket = () => {
-    const L = 1.65 * sc;                  // total length
-    const barrelW = 0.075 * sc;
-    const stockW  = 0.135 * sc;
+    const barrelW = 0.095 * sc;
+    const stockW  = 0.165 * sc;
 
-    // Wooden stock — light-blue (sky) with teal grain shadow.
+    // ── shoulder stock (curvy "swan-neck" butt for a cute silhouette) ─
     ctx.fillStyle = MK_SKY;
     ctx.beginPath();
-    ctx.moveTo(-stockW * 0.52, 0.06 * sc);
-    ctx.lineTo( stockW * 0.62, 0.06 * sc);
-    ctx.lineTo( stockW * 0.42, L * 0.30);
-    ctx.lineTo(-stockW * 0.50, L * 0.40);
+    ctx.moveTo(-stockW * 0.55, 0.05 * sc);
+    ctx.lineTo( stockW * 0.65, 0.05 * sc);
+    ctx.quadraticCurveTo(stockW * 0.55, L * 0.18, stockW * 0.45, L * 0.32);
+    ctx.quadraticCurveTo(stockW * 0.20, L * 0.46, -stockW * 0.10, L * 0.48);
+    ctx.quadraticCurveTo(-stockW * 0.55, L * 0.40, -stockW * 0.62, L * 0.16);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.80; ctx.stroke();
-    // Darker teal grain band along the inside of the stock.
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+    // Darker teal grain band along the underside of the stock.
     ctx.fillStyle = `rgba(33,158,188,0.55)`;
     ctx.beginPath();
-    ctx.moveTo( stockW * 0.22, 0.06 * sc);
-    ctx.lineTo( stockW * 0.55, 0.10 * sc);
-    ctx.lineTo( stockW * 0.36, L * 0.28);
-    ctx.lineTo( stockW * 0.08, L * 0.32);
+    ctx.moveTo( stockW * 0.30, 0.07 * sc);
+    ctx.lineTo( stockW * 0.60, 0.10 * sc);
+    ctx.quadraticCurveTo(stockW * 0.42, L * 0.30, stockW * 0.18, L * 0.40);
+    ctx.lineTo( stockW * 0.10, L * 0.32);
     ctx.closePath();
     ctx.fill();
-    // Light sky highlight strip along the outer edge.
+    // Light sky-blue highlight catch along the upper edge of the stock.
     ctx.fillStyle = MK_SKY_HI;
     ctx.beginPath();
-    ctx.moveTo(-stockW * 0.42, 0.05 * sc);
-    ctx.lineTo(-stockW * 0.14, 0.07 * sc);
-    ctx.lineTo(-stockW * 0.22, L * 0.28);
-    ctx.lineTo(-stockW * 0.42, L * 0.34);
+    ctx.moveTo(-stockW * 0.48, 0.06 * sc);
+    ctx.lineTo(-stockW * 0.20, 0.08 * sc);
+    ctx.quadraticCurveTo(-stockW * 0.30, L * 0.30, -stockW * 0.50, L * 0.34);
     ctx.closePath();
     ctx.fill();
+    // Gold filigree heart engraved on the stock — a girly signature.
+    {
+      ctx.save();
+      ctx.translate(-stockW * 0.10, L * 0.22);
+      const hr = 0.060 * sc;
+      ctx.fillStyle = MK_GOLD;
+      ctx.beginPath();
+      ctx.arc(-hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc( hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-hr * 0.95, 0);
+      ctx.lineTo(0, hr * 1.10);
+      ctx.lineTo( hr * 0.95, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.016 * sc;
+      ctx.beginPath();
+      ctx.arc(-hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc( hr * 0.45, -hr * 0.15, hr * 0.55, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-hr * 0.95, 0);
+      ctx.lineTo(0, hr * 1.10);
+      ctx.lineTo( hr * 0.95, 0);
+      ctx.stroke();
+      ctx.fillStyle = MK_GOLD_HI;
+      ctx.beginPath();
+      ctx.arc(-hr * 0.50, -hr * 0.25, hr * 0.18, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Decorative gold rivets along the stock side.
+    for (let i = 0; i < 3; i++) {
+      const ry = L * (0.10 + i * 0.10);
+      ctx.fillStyle = MK_GOLD;
+      ctx.beginPath();
+      ctx.arc(-stockW * 0.40, ry, 0.020 * sc, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.010 * sc; ctx.stroke();
+      ctx.fillStyle = MK_GOLD_HI;
+      ctx.beginPath();
+      ctx.arc(-stockW * 0.41, ry - 0.005 * sc, 0.008 * sc, 0, TAU);
+      ctx.fill();
+    }
 
-    // Trigger guard (small dark-navy arc under the grip).
-    ctx.strokeStyle = MK_NAVY;
-    ctx.lineWidth = 0.030 * sc;
+    // ── larger trigger guard (gold ornamental curve) ──
+    ctx.strokeStyle = MK_GOLD;
+    ctx.lineWidth = 0.034 * sc;
     ctx.beginPath();
-    ctx.arc(-0.01 * sc, 0.08 * sc, 0.060 * sc, 0, Math.PI);
+    ctx.arc(-0.005 * sc, 0.10 * sc, 0.080 * sc, 0, Math.PI);
     ctx.stroke();
-    // Trigger (tiny dark sliver hanging down).
+    ctx.strokeStyle = MK_NAVY_D;
+    ctx.lineWidth = 0.014 * sc;
+    ctx.beginPath();
+    ctx.arc(-0.005 * sc, 0.10 * sc, 0.080 * sc, 0, Math.PI);
+    ctx.stroke();
+    // Trigger (small dark sliver hanging down).
     ctx.fillStyle = MK_NAVY_D;
-    ctx.fillRect(-0.012 * sc, 0.08 * sc, 0.024 * sc, 0.040 * sc);
+    ctx.fillRect(-0.014 * sc, 0.10 * sc, 0.028 * sc, 0.050 * sc);
 
-    // Lock plate (small navy rectangle just above the grip, with a tiny
-    // brass cock).
+    // ── lock plate (gold rectangle with a brass starburst) ──
     ctx.fillStyle = MK_NAVY;
-    rr(ctx, -0.045 * sc, -0.04 * sc, 0.090 * sc, 0.10 * sc, 0.02 * sc);
+    rr(ctx, -0.060 * sc, -0.06 * sc, 0.120 * sc, 0.13 * sc, 0.02 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+    // Gold starburst medallion on the lock plate.
+    {
+      ctx.fillStyle = MK_GOLD;
+      const cx = 0, cy = 0.005 * sc, r = 0.035 * sc;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU;
+        const rr2 = (i % 2 === 0) ? r : r * 0.45;
+        const px = cx + Math.cos(a) * rr2;
+        const py = cy + Math.sin(a) * rr2;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.012 * sc; ctx.stroke();
+      ctx.fillStyle = MK_GOLD_HI;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.20, 0, TAU);
+      ctx.fill();
+    }
+    // Brass cock (hammer) on the side.
     ctx.fillStyle = MK_GOLD;
-    rr(ctx, -0.020 * sc, -0.05 * sc, 0.022 * sc, 0.055 * sc, 0.008 * sc);
+    rr(ctx, 0.038 * sc, -0.07 * sc, 0.024 * sc, 0.075 * sc, 0.008 * sc);
     ctx.fill();
+    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.010 * sc; ctx.stroke();
 
-    // Dark-navy barrel — long thin rounded rectangle going UP from grip.
+    // ── long dark-navy barrel ──
     ctx.fillStyle = MK_NAVY;
     rr(ctx, -barrelW * 0.5, -L * 0.50, barrelW, L * 0.55, barrelW * 0.22);
     ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
     // Teal/slate highlight stripe along one side of the barrel.
     ctx.fillStyle = `rgba(33,158,188,0.55)`;
     rr(ctx, -barrelW * 0.45, -L * 0.49, barrelW * 0.30, L * 0.52, barrelW * 0.10);
     ctx.fill();
-    // Light catch line along the very top.
-    ctx.fillStyle = `rgba(142,202,230,0.55)`;
+    // Sky-blue catch line along the very top.
+    ctx.fillStyle = `rgba(142,202,230,0.60)`;
     rr(ctx, -barrelW * 0.18, -L * 0.49, barrelW * 0.10, L * 0.50, barrelW * 0.04);
     ctx.fill();
 
+    // ── three gold trim bands along the barrel (lock / mid / muzzle) ──
+    const drawBand = (yPos, w) => {
+      ctx.fillStyle = MK_GOLD;
+      rr(ctx, -barrelW * 0.78, yPos, barrelW * 1.56, w, 0.025 * sc);
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.020 * sc; ctx.stroke();
+      ctx.fillStyle = MK_GOLD_HI;
+      ctx.fillRect(-barrelW * 0.40, yPos + w * 0.10, barrelW * 0.80, w * 0.20);
+      // tiny ornamental notches
+      ctx.fillStyle = MK_NAVY_D;
+      for (let i = -2; i <= 2; i++) {
+        ctx.fillRect(i * barrelW * 0.30, yPos + w * 0.65, 0.008 * sc, w * 0.30);
+      }
+    };
+    drawBand(0.005 * sc, 0.070 * sc);       // breech band (at the lock)
+    drawBand(-L * 0.22, 0.055 * sc);        // mid barrel band
+    drawBand(-L * 0.50 + 0.005 * sc, 0.080 * sc); // muzzle band (bigger)
+
     // Ramrod tube — slim parallel strip under (behind) the barrel.
     ctx.fillStyle = MK_SKY;
-    rr(ctx, barrelW * 0.20, -L * 0.42, 0.028 * sc, L * 0.40, 0.012 * sc);
+    rr(ctx, barrelW * 0.22, -L * 0.42, 0.030 * sc, L * 0.38, 0.012 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = 0.014 * sc; ctx.stroke();
 
-    // Gold trim band at the lock (where barrel meets stock).
-    ctx.fillStyle = MK_GOLD;
-    rr(ctx, -barrelW * 0.70, 0.005 * sc, barrelW * 1.40, 0.055 * sc, 0.020 * sc);
-    ctx.fill();
-    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.018 * sc; ctx.stroke();
-    // Gold catch dot in the middle of the band.
-    ctx.fillStyle = MK_GOLD_HI;
-    ctx.fillRect(-0.020 * sc, 0.018 * sc, 0.040 * sc, 0.014 * sc);
-
-    // Gold trim band at the muzzle.
-    ctx.fillStyle = MK_GOLD;
-    rr(ctx, -barrelW * 0.72, -L * 0.50, barrelW * 1.44, 0.055 * sc, 0.020 * sc);
-    ctx.fill();
-    ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.018 * sc; ctx.stroke();
-
-    // Dark muzzle bore (small black dot at the tip).
+    // Dark muzzle bore (small dark circle at the tip).
     ctx.fillStyle = MK_NAVY_D;
     ctx.beginPath();
-    ctx.arc(0, -L * 0.50 + 0.020 * sc, barrelW * 0.34, 0, TAU);
+    ctx.arc(0, -L * 0.50 + 0.025 * sc, barrelW * 0.34, 0, TAU);
     ctx.fill();
+
+    // ── BAYONET attached to the muzzle (steel blade with gold socket) ──
+    {
+      const bayL = 0.55 * sc;
+      const bayW = 0.040 * sc;
+      const bayBase = -L * 0.50 - 0.030 * sc;
+      // Gold socket where the bayonet meets the muzzle.
+      ctx.fillStyle = MK_GOLD;
+      rr(ctx, -barrelW * 0.55, bayBase - 0.05 * sc, barrelW * 1.10, 0.06 * sc, 0.02 * sc);
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.014 * sc; ctx.stroke();
+      // Steel blade — slender triangular shape tapering to a point.
+      ctx.fillStyle = MK_SKY_HI;
+      ctx.beginPath();
+      ctx.moveTo(-bayW, bayBase - 0.05 * sc);
+      ctx.lineTo( bayW, bayBase - 0.05 * sc);
+      ctx.lineTo( bayW * 0.3, bayBase - bayL);
+      ctx.lineTo(-bayW * 0.3, bayBase - bayL);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.016 * sc; ctx.stroke();
+      // Bright catch line down the center of the blade.
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(-bayW * 0.14, bayBase - 0.06 * sc);
+      ctx.lineTo( bayW * 0.06, bayBase - 0.06 * sc);
+      ctx.lineTo( bayW * 0.06, bayBase - bayL * 0.95);
+      ctx.lineTo(-bayW * 0.14, bayBase - bayL * 0.95);
+      ctx.closePath();
+      ctx.fill();
+      // Gold ribbon tied at the bayonet base (girly accent).
+      ctx.fillStyle = MK_ORANGE;
+      ctx.beginPath();
+      ctx.moveTo(0, bayBase - 0.02 * sc);
+      ctx.lineTo(-0.10 * sc, bayBase - 0.10 * sc);
+      ctx.lineTo(-0.10 * sc, bayBase + 0.04 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.012 * sc; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, bayBase - 0.02 * sc);
+      ctx.lineTo(0.10 * sc, bayBase - 0.10 * sc);
+      ctx.lineTo(0.10 * sc, bayBase + 0.04 * sc);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = MK_GOLD;
+      ctx.beginPath();
+      ctx.arc(0, bayBase - 0.02 * sc, 0.025 * sc, 0, TAU);
+      ctx.fill();
+    }
   };
 
   // Muzzle position in the musket's canonical frame (used by the flash
   // and the smoke puff). Caller draws within the SAME translated/rotated
   // frame as drawMusket.
-  const MUZZLE_Y = -1.65 * sc * 0.50 + 0.020 * sc;
+  const MUZZLE_Y = -L * 0.50 + 0.020 * sc;
 
   // ── reusable: muzzle flash (additive lighter blend) ───────────────────
   // Drawn at the muzzle in the musket's canonical frame. `a` is 0..1.
@@ -6921,123 +7336,125 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   // Eye-glow intensity (sights/aim/strike/hit pulse it brighter).
   const eyeGlow = 0.70 + shoulder * 0.20 + firePop * 0.40 + p.flash * 0.30;
 
-  // ── reusable: tricorn hat (3 corners) ─────────────────────────────────
-  // Drawn in side profile around (hx, headY). Visible peaks: back, top
-  // (slightly behind), and front.
+  // ── reusable: rounded crown hat ────────────────────────────────────────
+  // Drawn in side profile around (hx, headY). Smooth dome silhouette
+  // instead of the old triangular tricorn peaks: think a soft-crowned
+  // cavalier cap with an upturned brim and a gold trim band.
   const drawTricornSide = (hx) => {
-    // Outer hat silhouette (teal).
+    // Outer hat silhouette (teal) — dome crown + flared brim.
     ctx.fillStyle = MK_TEAL;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.42 * sc, headY - 0.06 * sc);
-    ctx.lineTo(hx - 0.32 * sc, headY - 0.30 * sc);
-    ctx.lineTo(hx + 0.04 * sc, headY - 0.38 * sc);
-    ctx.lineTo(hx + 0.34 * sc, headY - 0.24 * sc);
-    ctx.lineTo(hx + 0.42 * sc, headY - 0.04 * sc);
+    ctx.moveTo(hx - 0.42 * sc, headY - 0.04 * sc);
+    // Sweep up and over the dome (slight forward asymmetry).
+    ctx.quadraticCurveTo(hx - 0.40 * sc, headY - 0.34 * sc,
+                         hx + 0.06 * sc, headY - 0.38 * sc);
+    ctx.quadraticCurveTo(hx + 0.40 * sc, headY - 0.30 * sc,
+                         hx + 0.42 * sc, headY - 0.04 * sc);
+    // Flared brim under the dome.
     ctx.lineTo(hx + 0.36 * sc, headY + 0.06 * sc);
     ctx.lineTo(hx - 0.36 * sc, headY + 0.04 * sc);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Light-blue brim highlight on top of the crown.
+    // Light-blue crown highlight (curved catch along the top of the dome).
     ctx.fillStyle = MK_SKY;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.28 * sc, headY - 0.26 * sc);
-    ctx.lineTo(hx + 0.02 * sc, headY - 0.34 * sc);
-    ctx.lineTo(hx + 0.20 * sc, headY - 0.26 * sc);
-    ctx.lineTo(hx - 0.08 * sc, headY - 0.20 * sc);
+    ctx.moveTo(hx - 0.26 * sc, headY - 0.24 * sc);
+    ctx.quadraticCurveTo(hx + 0.04 * sc, headY - 0.34 * sc,
+                         hx + 0.22 * sc, headY - 0.24 * sc);
+    ctx.quadraticCurveTo(hx + 0.06 * sc, headY - 0.18 * sc,
+                         hx - 0.10 * sc, headY - 0.18 * sc);
     ctx.closePath();
     ctx.fill();
     // Dark-navy shadow under the brim.
     ctx.fillStyle = `rgba(2,48,71,0.55)`;
     rr(ctx, hx - 0.36 * sc, headY - 0.02 * sc, 0.74 * sc, 0.07 * sc, 0.025 * sc);
     ctx.fill();
-    // Gold trim band along the brim edge.
+    // Gold trim band along the rounded crown edge.
     ctx.strokeStyle = MK_GOLD;
     ctx.lineWidth = 0.026 * sc;
     ctx.beginPath();
     ctx.moveTo(hx - 0.40 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx - 0.32 * sc, headY - 0.28 * sc);
-    ctx.lineTo(hx + 0.04 * sc, headY - 0.36 * sc);
-    ctx.lineTo(hx + 0.34 * sc, headY - 0.22 * sc);
-    ctx.lineTo(hx + 0.40 * sc, headY - 0.03 * sc);
+    ctx.quadraticCurveTo(hx - 0.38 * sc, headY - 0.32 * sc,
+                         hx + 0.06 * sc, headY - 0.36 * sc);
+    ctx.quadraticCurveTo(hx + 0.38 * sc, headY - 0.28 * sc,
+                         hx + 0.40 * sc, headY - 0.03 * sc);
     ctx.stroke();
   };
 
-  // Tricorn from the front — symmetric trident shape (2 outer corners +
-  // a back peak hidden behind, suggested by a tall center notch).
+  // Front view — symmetric rounded dome with a soft arched brim.
   const drawTricornFront = (hx) => {
     ctx.fillStyle = MK_TEAL;
     ctx.beginPath();
     ctx.moveTo(hx - 0.46 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx - 0.38 * sc, headY - 0.34 * sc);
-    ctx.lineTo(hx,             headY - 0.30 * sc);
-    ctx.lineTo(hx + 0.38 * sc, headY - 0.34 * sc);
-    ctx.lineTo(hx + 0.46 * sc, headY - 0.04 * sc);
+    ctx.quadraticCurveTo(hx - 0.44 * sc, headY - 0.36 * sc,
+                         hx, headY - 0.38 * sc);
+    ctx.quadraticCurveTo(hx + 0.44 * sc, headY - 0.36 * sc,
+                         hx + 0.46 * sc, headY - 0.04 * sc);
     ctx.lineTo(hx + 0.40 * sc, headY + 0.06 * sc);
     ctx.lineTo(hx - 0.40 * sc, headY + 0.06 * sc);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Light-blue crown highlight.
+    // Light-blue crown highlight (curved).
     ctx.fillStyle = MK_SKY;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.30 * sc, headY - 0.28 * sc);
-    ctx.lineTo(hx - 0.10 * sc, headY - 0.22 * sc);
-    ctx.lineTo(hx + 0.10 * sc, headY - 0.22 * sc);
-    ctx.lineTo(hx + 0.30 * sc, headY - 0.28 * sc);
-    ctx.lineTo(hx + 0.16 * sc, headY - 0.32 * sc);
-    ctx.lineTo(hx - 0.16 * sc, headY - 0.32 * sc);
+    ctx.moveTo(hx - 0.30 * sc, headY - 0.24 * sc);
+    ctx.quadraticCurveTo(hx, headY - 0.32 * sc,
+                         hx + 0.30 * sc, headY - 0.24 * sc);
+    ctx.quadraticCurveTo(hx + 0.16 * sc, headY - 0.18 * sc,
+                         hx - 0.16 * sc, headY - 0.18 * sc);
     ctx.closePath();
     ctx.fill();
     // Brim under-shadow (across the face top).
     ctx.fillStyle = `rgba(2,48,71,0.60)`;
     rr(ctx, hx - 0.40 * sc, headY - 0.02 * sc, 0.80 * sc, 0.08 * sc, 0.03 * sc);
     ctx.fill();
-    // Gold trim band along the brim edge.
+    // Gold trim band along the rounded crown edge.
     ctx.strokeStyle = MK_GOLD;
     ctx.lineWidth = 0.026 * sc;
     ctx.beginPath();
     ctx.moveTo(hx - 0.44 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx - 0.38 * sc, headY - 0.32 * sc);
-    ctx.lineTo(hx,             headY - 0.28 * sc);
-    ctx.lineTo(hx + 0.38 * sc, headY - 0.32 * sc);
-    ctx.lineTo(hx + 0.44 * sc, headY - 0.04 * sc);
+    ctx.quadraticCurveTo(hx - 0.42 * sc, headY - 0.34 * sc,
+                         hx, headY - 0.36 * sc);
+    ctx.quadraticCurveTo(hx + 0.42 * sc, headY - 0.34 * sc,
+                         hx + 0.44 * sc, headY - 0.04 * sc);
     ctx.stroke();
   };
 
-  // Tricorn from the back — only the rear peak is prominent; brim curves
-  // up at the sides.
+  // Back view — symmetric rounded dome (matches front from behind).
   const drawTricornBack = (hx) => {
     ctx.fillStyle = MK_TEAL;
     ctx.beginPath();
     ctx.moveTo(hx - 0.44 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx - 0.20 * sc, headY - 0.28 * sc);
-    ctx.lineTo(hx,             headY - 0.40 * sc);
-    ctx.lineTo(hx + 0.20 * sc, headY - 0.28 * sc);
-    ctx.lineTo(hx + 0.44 * sc, headY - 0.04 * sc);
+    ctx.quadraticCurveTo(hx - 0.42 * sc, headY - 0.36 * sc,
+                         hx, headY - 0.38 * sc);
+    ctx.quadraticCurveTo(hx + 0.42 * sc, headY - 0.36 * sc,
+                         hx + 0.44 * sc, headY - 0.04 * sc);
     ctx.lineTo(hx + 0.38 * sc, headY + 0.06 * sc);
     ctx.lineTo(hx - 0.38 * sc, headY + 0.06 * sc);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-    // Light-blue ridge highlight.
+    // Light-blue crown highlight (curved).
     ctx.fillStyle = MK_SKY;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.04 * sc, headY - 0.36 * sc);
-    ctx.lineTo(hx + 0.04 * sc, headY - 0.36 * sc);
-    ctx.lineTo(hx + 0.20 * sc, headY - 0.10 * sc);
-    ctx.lineTo(hx - 0.20 * sc, headY - 0.10 * sc);
+    ctx.moveTo(hx - 0.22 * sc, headY - 0.26 * sc);
+    ctx.quadraticCurveTo(hx, headY - 0.34 * sc,
+                         hx + 0.22 * sc, headY - 0.26 * sc);
+    ctx.quadraticCurveTo(hx + 0.10 * sc, headY - 0.16 * sc,
+                         hx - 0.10 * sc, headY - 0.16 * sc);
     ctx.closePath();
     ctx.fill();
-    // Gold trim seam along the brim.
+    // Gold trim seam along the rounded crown.
     ctx.strokeStyle = MK_GOLD;
     ctx.lineWidth = 0.024 * sc;
     ctx.beginPath();
     ctx.moveTo(hx - 0.42 * sc, headY - 0.04 * sc);
-    ctx.lineTo(hx - 0.20 * sc, headY - 0.26 * sc);
-    ctx.lineTo(hx,             headY - 0.38 * sc);
-    ctx.lineTo(hx + 0.20 * sc, headY - 0.26 * sc);
-    ctx.lineTo(hx + 0.42 * sc, headY - 0.04 * sc);
+    ctx.quadraticCurveTo(hx - 0.40 * sc, headY - 0.34 * sc,
+                         hx, headY - 0.36 * sc);
+    ctx.quadraticCurveTo(hx + 0.40 * sc, headY - 0.34 * sc,
+                         hx + 0.42 * sc, headY - 0.04 * sc);
     ctx.stroke();
   };
 
@@ -7292,49 +7709,78 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     }
   };
 
+  // ── back of head: round orange-hair skull silhouette ──
+  // Used by the back view so the heroine isn't a floating hat over empty
+  // space. Sits under the tricorn brim and meets the ponytail root at the
+  // nape. Includes side wisps that peek out below the hat, a soft darker
+  // shadow side for cel-shading, lighter strand highlights, and a centre
+  // part line suggesting the hair gathers into the tail.
+  const drawHeadBack = (hx) => {
+    // Round orange skull (hair covering the entire back of the head).
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.ellipse(hx, headY + 0.06 * sc, 0.34 * sc, 0.32 * sc, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
+    // Darker side shadow for depth.
+    ctx.fillStyle = MK_ORANGE_D;
+    ctx.beginPath();
+    ctx.ellipse(hx + 0.14 * sc, headY + 0.12 * sc, 0.15 * sc, 0.22 * sc, 0, 0, TAU);
+    ctx.fill();
+    // Lighter strand highlights flowing toward the nape.
+    ctx.strokeStyle = `rgba(255,210,148,0.55)`;
+    ctx.lineWidth = 0.014 * sc;
+    for (let i = 0; i < 3; i++) {
+      const off = (-0.14 + i * 0.10) * sc;
+      ctx.beginPath();
+      ctx.moveTo(hx + off, headY - 0.08 * sc);
+      ctx.quadraticCurveTo(hx + off * 0.7, headY + 0.10 * sc,
+                           hx + off * 0.3, headY + 0.26 * sc);
+      ctx.stroke();
+    }
+    // Centre hair part / gather line down to the ponytail base.
+    ctx.strokeStyle = MK_ORANGE_D;
+    ctx.lineWidth = 0.020 * sc;
+    ctx.beginPath();
+    ctx.moveTo(hx, headY - 0.10 * sc);
+    ctx.quadraticCurveTo(hx + 0.005 * sc, headY + 0.12 * sc,
+                         hx, headY + 0.30 * sc);
+    ctx.stroke();
+    // Side wisps peeking below the brim (left + right).
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.moveTo(hx - 0.32 * sc, headY + 0.02 * sc);
+    ctx.quadraticCurveTo(hx - 0.40 * sc, headY + 0.14 * sc,
+                         hx - 0.30 * sc, headY + 0.24 * sc);
+    ctx.quadraticCurveTo(hx - 0.26 * sc, headY + 0.14 * sc,
+                         hx - 0.22 * sc, headY + 0.08 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+    ctx.fillStyle = MK_ORANGE;
+    ctx.beginPath();
+    ctx.moveTo(hx + 0.32 * sc, headY + 0.02 * sc);
+    ctx.quadraticCurveTo(hx + 0.40 * sc, headY + 0.14 * sc,
+                         hx + 0.30 * sc, headY + 0.24 * sc);
+    ctx.quadraticCurveTo(hx + 0.26 * sc, headY + 0.14 * sc,
+                         hx + 0.22 * sc, headY + 0.08 * sc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+    // Small peach nape patch where the hair lifts off the neck.
+    ctx.fillStyle = MK_SKIN_SH;
+    ctx.beginPath();
+    ctx.ellipse(hx, headY + 0.36 * sc, 0.10 * sc, 0.05 * sc, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.5; ctx.stroke();
+  };
+
   // ════════════════════════════════════════════════════════════════════════
   // ── VIEW DISPATCH ─────────────────────────────────────────────────────
   // ════════════════════════════════════════════════════════════════════════
   if (p.view === 'side') {
 
-    // ── trailing coat tail (drawn first; sits behind everything) ──
-    {
-      ctx.save();
-      ctx.translate(-0.10 * sc, hipY + 0.04 * sc);
-      ctx.rotate(0.04 + p.moving * 0.10 - recoilFan * 0.06);
-      const fanBack = recoilFan * 0.30 * sc;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(-0.50 * sc + flutter * 0.3 - fanBack, 0.45 * sc,
-                           -0.32 * sc + flutter - fanBack * 0.8, 1.05 * sc);
-      ctx.quadraticCurveTo(-0.04 * sc, 1.15 * sc, 0.20 * sc, 1.00 * sc);
-      ctx.quadraticCurveTo(0.24 * sc, 0.45 * sc, 0.20 * sc, 0);
-      ctx.closePath();
-      const cg = ctx.createLinearGradient(0, 0, -0.4 * sc, 1.1 * sc);
-      cg.addColorStop(0, MK_TEAL);
-      cg.addColorStop(0.55, MK_TEAL_D);
-      cg.addColorStop(1, MK_NAVY);
-      ctx.fillStyle = cg;
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // Gold trim seam along the trailing edge.
-      ctx.strokeStyle = MK_GOLD;
-      ctx.lineWidth = 0.030 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.46 * sc + flutter * 0.3 - fanBack, 0.45 * sc);
-      ctx.quadraticCurveTo(-0.30 * sc + flutter - fanBack * 0.6, 0.90 * sc,
-                           -0.10 * sc + flutter * 0.5, 1.10 * sc);
-      ctx.stroke();
-      // Light-blue interior fold highlight.
-      ctx.strokeStyle = MK_SKY;
-      ctx.lineWidth = 0.022 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.02 * sc, 0.08 * sc);
-      ctx.quadraticCurveTo(-0.14 * sc + flutter * 0.3, 0.55 * sc,
-                           -0.06 * sc + flutter * 0.4, 1.00 * sc);
-      ctx.stroke();
-      ctx.restore();
-    }
+    // (Back-skirt flutter / cloak removed — clean dress silhouette only.)
 
     // ── back ponytail tail (visible behind head) ──
     drawPonytail(-0.20 * sc, headY + 0.32 * sc, -1, -recoilFan * 0.30);
@@ -7347,19 +7793,19 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
       const footX    = side * legSpread + swingX;
       const kneeBend = side * legSpread + swingX * 0.55;
       const kneeY    = (hipY + baseY) * 0.5 + Math.abs(swingX) * 0.10;
-      // teal stockings
-      ctx.fillStyle = isBack ? MK_TEAL_D : MK_TEAL;
-      capsule(ctx, hipX, hipY, kneeBend, kneeY, 0.13 * sc);
+      // Thicker peach legs (girly but sturdy chibi proportions).
+      ctx.fillStyle = isBack ? MK_SKIN_SH : MK_SKIN;
+      capsule(ctx, hipX, hipY + 0.08 * sc, kneeBend, kneeY, 0.14 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.02 * sc, 0.11 * sc);
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      capsule(ctx, kneeBend, kneeY, footX, baseY - 0.38 * sc, 0.12 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // shadow stripe down the back of the calf (on near leg only)
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      // subtle peach shadow on the back of the calf (near leg only)
       if (!isBack) {
-        ctx.fillStyle = `rgba(2,48,71,0.40)`;
+        ctx.fillStyle = `rgba(232,168,155,0.50)`;
         capsule(ctx, kneeBend - 0.04 * sc, kneeY + 0.04 * sc,
-                     footX - 0.04 * sc, baseY - 0.08 * sc, 0.05 * sc);
+                     footX - 0.04 * sc, baseY - 0.40 * sc, 0.050 * sc);
         ctx.fill();
       }
       // tall navy boot
@@ -7388,16 +7834,20 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     };
     drawSideLeg(-1, -legSwing, true);
 
-    // ── coat body (teal long coat reaching mid-thigh) ──
-    // The coat is split: TORSO above belt, SKIRT below belt (down to mid-
-    // thigh). Drawn behind the front leg.
-    const coatHemY = hipY + 0.62 * sc;
+    // ── hourglass bodice (side profile, cinched at the waist) ──
+    // Back side: gentle in-curve at the small of the back.
+    // Belly side: bust bulges forward, tucks sharply into the waist.
+    const coatHemY = hipY + 0.20 * sc;  // SHORT skirt hem (was hipY + 0.34)
+    const waistBackX  = -0.20 * sc;
+    const waistFrontX =  0.26 * sc;
     ctx.beginPath();
-    ctx.moveTo(-0.36 * sc, shoY);
-    ctx.quadraticCurveTo(-0.46 * sc, (shoY + hipY) * 0.5, -0.36 * sc, hipY);
-    ctx.lineTo(0.40 * sc, hipY);
-    ctx.quadraticCurveTo(0.50 * sc, (shoY + hipY) * 0.5, 0.42 * sc, shoY);
-    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.36 * sc, shoY);
+    ctx.moveTo(-0.30 * sc, shoY);                                       // back shoulder
+    ctx.quadraticCurveTo(-0.42 * sc, shoY + 0.34 * sc,                 // back upper bulge
+                         waistBackX, hipY);                             // back waist (cinch)
+    ctx.lineTo(waistFrontX, hipY);                                      // belly waist (cinch)
+    ctx.quadraticCurveTo(0.54 * sc, shoY + 0.30 * sc,                  // bust bulge (front)
+                         0.42 * sc, shoY);                              // front shoulder
+    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.30 * sc, shoY); // collar
     ctx.closePath();
     const tg = ctx.createLinearGradient(-0.4 * sc, shoY, 0.4 * sc, hipY);
     tg.addColorStop(0, MK_SKY);
@@ -7405,80 +7855,82 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     tg.addColorStop(1, MK_TEAL_D);
     ctx.fillStyle = tg;
     ctx.fill();
-    // back-side shadow band
+    // back-side shadow band (re-traces just the back half of the bodice).
     ctx.fillStyle = `rgba(2,48,71,0.45)`;
     ctx.beginPath();
-    ctx.moveTo(-0.36 * sc, shoY);
-    ctx.quadraticCurveTo(-0.46 * sc, (shoY + hipY) * 0.5, -0.36 * sc, hipY);
-    ctx.lineTo(-0.14 * sc, hipY);
-    ctx.lineTo(-0.10 * sc, shoY - 0.02 * sc);
+    ctx.moveTo(-0.30 * sc, shoY);
+    ctx.quadraticCurveTo(-0.42 * sc, shoY + 0.34 * sc,
+                         waistBackX, hipY);
+    ctx.lineTo(-0.04 * sc, hipY);
+    ctx.lineTo(-0.06 * sc, shoY - 0.02 * sc);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.10;
     ctx.beginPath();
-    ctx.moveTo(-0.36 * sc, shoY);
-    ctx.quadraticCurveTo(-0.46 * sc, (shoY + hipY) * 0.5, -0.36 * sc, hipY);
-    ctx.lineTo(0.40 * sc, hipY);
-    ctx.quadraticCurveTo(0.50 * sc, (shoY + hipY) * 0.5, 0.42 * sc, shoY);
-    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.36 * sc, shoY);
+    ctx.moveTo(-0.30 * sc, shoY);
+    ctx.quadraticCurveTo(-0.42 * sc, shoY + 0.34 * sc,
+                         waistBackX, hipY);
+    ctx.lineTo(waistFrontX, hipY);
+    ctx.quadraticCurveTo(0.54 * sc, shoY + 0.30 * sc,
+                         0.42 * sc, shoY);
+    ctx.quadraticCurveTo(0.04 * sc, shoY - 0.18 * sc, -0.30 * sc, shoY);
     ctx.closePath();
     ctx.stroke();
-    // Gold buttons down the front of the chest.
-    drawCoatButtons(0.16 * sc, shoY + 0.10 * sc, hipY - 0.08 * sc);
-    // Light-blue trim along the chest opening (lapel).
+    // Gold buttons down the front of the bodice.
+    drawCoatButtons(0.20 * sc, shoY + 0.16 * sc, hipY - 0.08 * sc);
+    // Light-blue sweetheart neckline.
     ctx.strokeStyle = MK_SKY;
     ctx.lineWidth = 0.030 * sc;
     ctx.beginPath();
-    ctx.moveTo(0.06 * sc, shoY);
-    ctx.lineTo(0.24 * sc, hipY - 0.04 * sc);
+    ctx.moveTo(0.04 * sc, shoY - 0.02 * sc);
+    ctx.quadraticCurveTo(0.22 * sc, shoY + 0.18 * sc, 0.34 * sc, shoY + 0.04 * sc);
     ctx.stroke();
-    // Wide light-blue trim cuff (none here in side; shoulder mantle drawn
-    // on the front shoulder later).
 
-    // ── coat skirt (long mid-thigh hem, fluttering) ──
+    // ── A-line short skirt (flared from waist, above-knee, fluttering) ──
     {
       ctx.fillStyle = MK_TEAL_D;
       ctx.beginPath();
-      ctx.moveTo(-0.36 * sc, hipY + 0.04 * sc);
-      ctx.quadraticCurveTo(-0.46 * sc + flutter * 0.4 - recoilFan * 0.30 * sc,
+      ctx.moveTo(waistBackX, hipY + 0.02 * sc);
+      ctx.quadraticCurveTo(-0.42 * sc + flutter * 0.4 - recoilFan * 0.30 * sc,
                             (hipY + coatHemY) * 0.5,
-                            -0.40 * sc + flutter * 0.6 - recoilFan * 0.40 * sc,
+                            -0.46 * sc + flutter * 0.6 - recoilFan * 0.40 * sc,
                             coatHemY);
-      ctx.quadraticCurveTo(-0.04 * sc, coatHemY + 0.10 * sc,
-                            0.24 * sc + flutter * 0.2, coatHemY - 0.04 * sc);
-      ctx.quadraticCurveTo(0.34 * sc, (hipY + coatHemY) * 0.5,
-                            0.40 * sc, hipY + 0.04 * sc);
+      ctx.quadraticCurveTo(-0.04 * sc, coatHemY + 0.12 * sc,
+                            0.40 * sc + flutter * 0.2, coatHemY - 0.04 * sc);
+      ctx.quadraticCurveTo(0.42 * sc, (hipY + coatHemY) * 0.5,
+                            waistFrontX, hipY + 0.02 * sc);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.9; ctx.stroke();
-      // teal mid-tone overlay (the lit side)
+      // teal mid-tone overlay (the lit, belly-side half)
       ctx.fillStyle = MK_TEAL;
       ctx.beginPath();
-      ctx.moveTo(-0.04 * sc, hipY + 0.04 * sc);
-      ctx.quadraticCurveTo(0.06 * sc, (hipY + coatHemY) * 0.5,
-                           0.22 * sc + flutter * 0.2, coatHemY - 0.06 * sc);
-      ctx.quadraticCurveTo(0.32 * sc, (hipY + coatHemY) * 0.5,
-                           0.40 * sc, hipY + 0.04 * sc);
+      ctx.moveTo(0, hipY + 0.02 * sc);
+      ctx.quadraticCurveTo(0.10 * sc, (hipY + coatHemY) * 0.5,
+                           0.36 * sc + flutter * 0.2, coatHemY - 0.06 * sc);
+      ctx.quadraticCurveTo(0.40 * sc, (hipY + coatHemY) * 0.5,
+                           waistFrontX, hipY + 0.02 * sc);
       ctx.closePath();
       ctx.fill();
       // Gold trim seam along the bottom hem.
       ctx.strokeStyle = MK_GOLD;
       ctx.lineWidth = 0.026 * sc;
       ctx.beginPath();
-      ctx.moveTo(-0.36 * sc + flutter * 0.4 - recoilFan * 0.30 * sc,
-                 coatHemY - 0.04 * sc);
-      ctx.quadraticCurveTo(-0.04 * sc, coatHemY + 0.08 * sc,
-                            0.30 * sc + flutter * 0.2, coatHemY - 0.06 * sc);
+      ctx.moveTo(-0.42 * sc + flutter * 0.4 - recoilFan * 0.30 * sc,
+                 coatHemY - 0.02 * sc);
+      ctx.quadraticCurveTo(-0.04 * sc, coatHemY + 0.10 * sc,
+                            0.38 * sc + flutter * 0.2, coatHemY - 0.06 * sc);
       ctx.stroke();
     }
 
-    // ── belt + buckle ──
+    // ── narrow belt + buckle at the cinched waist ──
     ctx.fillStyle = MK_NAVY;
-    rr(ctx, -0.40 * sc, hipY - 0.06 * sc, 0.84 * sc, 0.18 * sc, 0.04 * sc);
+    rr(ctx, waistBackX - 0.02 * sc, hipY - 0.06 * sc,
+        (waistFrontX - waistBackX) + 0.04 * sc, 0.16 * sc, 0.04 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
     ctx.fillStyle = MK_GOLD;
-    rr(ctx, 0.06 * sc, hipY - 0.04 * sc, 0.20 * sc, 0.16 * sc, 0.025 * sc);
+    rr(ctx, 0.04 * sc, hipY - 0.04 * sc, 0.18 * sc, 0.14 * sc, 0.025 * sc);
     ctx.fill();
     ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.022 * sc; ctx.stroke();
     ctx.fillStyle = MK_NAVY;
@@ -7505,7 +7957,7 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     const backHandY = lerp(hipY + 0.06 * sc, shoY + 0.18 * sc, shoulder)
                     + strikePhase * (1 - recoverPhase) * 0.04 * sc;
     // Front-hand on the forestock — half-way along the barrel.
-    const barrelL = 1.65 * sc;
+    const barrelL = L;
     const cosA = Math.cos(armAng), sinA = Math.sin(armAng);
     const frontHandX = backHandX + cosA * (-barrelL * 0.32);
     const frontHandY = backHandY + sinA * (-barrelL * 0.32);
@@ -7514,15 +7966,15 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     // const muzzleX = backHandX + cosA * (-barrelL * 0.50);
     // const muzzleY = backHandY + sinA * (-barrelL * 0.50);
 
-    // Back upper arm (behind torso). Sleeve is teal with light-blue cuff.
+    // Back upper arm (behind torso) — thicker for chibi balance.
     ctx.fillStyle = MK_TEAL;
-    capsule(ctx, backShX, backShY, backHandX, backHandY, 0.10 * sc);
+    capsule(ctx, backShX, backShY, backHandX, backHandY, 0.14 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
     // Sleeve shadow on the underside.
     ctx.fillStyle = `rgba(2,48,71,0.40)`;
     capsule(ctx, backShX + 0.02 * sc, backShY + 0.04 * sc,
-                 backHandX + 0.02 * sc, backHandY + 0.04 * sc, 0.05 * sc);
+                 backHandX + 0.02 * sc, backHandY + 0.04 * sc, 0.07 * sc);
     ctx.fill();
     // Cuff + hand.
     ctx.save();
@@ -7546,39 +7998,42 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
 
     // ── head + hat go above arm so tilt doesn't hide eyes ──
     // Head tilt: small forward-and-down on aim (sighting down barrel).
+    // The entire head/hat/plume scales up around the chin pivot for chibi cuteness.
     ctx.save();
     const headTiltX = shoulder * 0.04 * sc;
     const headTiltY = shoulder * 0.02 * sc;
     ctx.translate(headTiltX, headTiltY);
-    // Skin face slice (under hat).
-    drawSkinSide(0);
-    // Tricorn hat over the head.
-    drawTricornSide(0);
-    // Plume rises from the side of the hat.
-    ctx.save();
-    ctx.translate(-0.20 * sc, headY - 0.30 * sc);
-    drawPlume(0, 0, 0.60 * sc, plume);
-    ctx.restore();
-    // Eye glow under hat brim.
-    drawEyeSide(0);
+    {
+      const pY = HEAD_PIVOT_Y();
+      ctx.save();
+      ctx.translate(0, pY);
+      ctx.scale(HEAD_S, HEAD_S);
+      ctx.translate(0, -pY);
+      // Skin face slice (under hat).
+      drawSkinSide(0);
+      // Tricorn hat over the head.
+      drawTricornSide(0);
+      // Plume rises from the side of the hat.
+      ctx.save();
+      ctx.translate(-0.20 * sc, headY - 0.30 * sc);
+      drawPlume(0, 0, 0.60 * sc, plume);
+      ctx.restore();
+      // Eye glow under hat brim.
+      drawEyeSide(0);
+      ctx.restore();
+    }
     ctx.restore();
 
-    // ── front shoulder mantle + front arm + musket ──
-    // Shoulder mantle (light-blue cap on the shoulder for trim).
-    ctx.fillStyle = MK_SKY;
-    ctx.beginPath();
-    ctx.arc(frontShX, frontShY, 0.16 * sc, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.7; ctx.stroke();
-    // Front (off-hand) upper arm.
+    // ── front arm + musket (no shoulder mantle — cloak/trim removed) ──
+    // Front (off-hand) upper arm — thicker for chibi balance.
     ctx.fillStyle = MK_TEAL;
-    capsule(ctx, frontShX, frontShY, frontHandX, frontHandY, 0.11 * sc);
+    capsule(ctx, frontShX, frontShY, frontHandX, frontHandY, 0.15 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
     // sleeve shadow
     ctx.fillStyle = `rgba(2,48,71,0.40)`;
     capsule(ctx, frontShX + 0.05 * sc, frontShY + 0.04 * sc,
-                 frontHandX + 0.05 * sc, frontHandY + 0.04 * sc, 0.05 * sc);
+                 frontHandX + 0.05 * sc, frontHandY + 0.04 * sc, 0.07 * sc);
     ctx.fill();
     // Cuff + hand on the forestock.
     ctx.save();
@@ -7612,42 +8067,8 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.05 * sc;
     ctx.translate(sway, 0);
 
-    // ── coat side flaps behind body ──
-    {
-      const flR = Math.sin(tC) * (0.05 + p.moving * 0.10) * sc;
-      const flL = Math.cos(tC * 1.1) * (0.05 + p.moving * 0.10) * sc;
-      const cg = ctx.createLinearGradient(0, shoY, 0, hipY + 0.7 * sc);
-      cg.addColorStop(0, MK_TEAL);
-      cg.addColorStop(1, MK_NAVY);
-      ctx.fillStyle = cg;
-      ctx.beginPath();
-      ctx.moveTo(-0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(-0.58 * sc + flL, hipY + 0.30 * sc,
-                           -0.40 * sc + flL * 0.5, hipY + 0.80 * sc);
-      ctx.quadraticCurveTo(-0.20 * sc, hipY + 0.30 * sc,
-                           -0.26 * sc, shoY + 0.18 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(0.58 * sc + flR, hipY + 0.30 * sc,
-                           0.40 * sc + flR * 0.5, hipY + 0.80 * sc);
-      ctx.quadraticCurveTo(0.20 * sc, hipY + 0.30 * sc,
-                           0.26 * sc, shoY + 0.18 * sc);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
-      // Gold trim along the leading edges.
-      ctx.strokeStyle = MK_GOLD;
-      ctx.lineWidth = 0.026 * sc;
-      ctx.beginPath();
-      ctx.moveTo(-0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(-0.30 * sc, hipY + 0.20 * sc, -0.26 * sc, hipY + 0.70 * sc);
-      ctx.moveTo(0.36 * sc, shoY + 0.10 * sc);
-      ctx.quadraticCurveTo(0.30 * sc, hipY + 0.20 * sc, 0.26 * sc, hipY + 0.70 * sc);
-      ctx.stroke();
-    }
+    // (Old long coat side-flaps removed — replaced by the new short
+    //  hourglass dress silhouette below.)
 
     // ── legs (alternating lifts) ──
     const legSpreadF = 0.20 * sc;
@@ -7656,14 +8077,15 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     const drawFrontLeg = (side, footLift) => {
       const x = side * legSpreadF;
       const footPt = baseY - footLift;
-      ctx.fillStyle = MK_TEAL;
-      capsule(ctx, x, hipY, x, footPt - 0.02 * sc, 0.13 * sc);
+      // Thicker peach legs (chibi proportions).
+      ctx.fillStyle = MK_SKIN;
+      capsule(ctx, x, hipY + 0.10 * sc, x, footPt - 0.40 * sc, 0.13 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // navy shadow stripe down the outer side
-      ctx.fillStyle = `rgba(2,48,71,0.40)`;
-      capsule(ctx, x + side * 0.06 * sc, hipY + 0.08 * sc,
-                   x + side * 0.06 * sc, footPt - 0.10 * sc, 0.05 * sc);
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      // soft shadow down the outer side
+      ctx.fillStyle = `rgba(232,168,155,0.50)`;
+      capsule(ctx, x + side * 0.06 * sc, hipY + 0.16 * sc,
+                   x + side * 0.06 * sc, footPt - 0.44 * sc, 0.050 * sc);
       ctx.fill();
       // navy knee-high boot
       ctx.fillStyle = MK_NAVY;
@@ -7688,100 +8110,128 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     drawFrontLeg(-1, liftL);
     drawFrontLeg(1, liftR);
 
-    // ── coat torso (long teal coat, lapels light-blue) ──
+    // ── hourglass bodice (wide bust → cinched waist) ──
+    // Top: shoY at ±0.44 (broad shoulders); bust bulge to ±0.50 around
+    // the upper third; waist cinch to ±0.22 at hipY (belt line).
+    const waistY = hipY;
+    const waistHalfW = 0.22 * sc;
     ctx.beginPath();
-    ctx.moveTo(-0.40 * sc, shoY);
-    ctx.quadraticCurveTo(-0.52 * sc, (shoY + hipY) * 0.5, -0.40 * sc, hipY);
-    ctx.lineTo(0.40 * sc, hipY);
-    ctx.quadraticCurveTo(0.52 * sc, (shoY + hipY) * 0.5, 0.40 * sc, shoY);
-    ctx.quadraticCurveTo(0, shoY - 0.20 * sc, -0.40 * sc, shoY);
+    ctx.moveTo(-0.44 * sc, shoY);
+    ctx.quadraticCurveTo(-0.50 * sc, shoY + 0.20 * sc,
+                         -0.40 * sc, shoY + 0.42 * sc);
+    ctx.quadraticCurveTo(-0.28 * sc, waistY - 0.10 * sc,
+                         -waistHalfW, waistY);
+    ctx.lineTo(waistHalfW, waistY);
+    ctx.quadraticCurveTo(0.28 * sc, waistY - 0.10 * sc,
+                          0.40 * sc, shoY + 0.42 * sc);
+    ctx.quadraticCurveTo(0.50 * sc, shoY + 0.20 * sc,
+                          0.44 * sc, shoY);
+    ctx.quadraticCurveTo(0, shoY - 0.20 * sc, -0.44 * sc, shoY);
     ctx.closePath();
-    const tgF = ctx.createLinearGradient(-0.40 * sc, shoY, 0.40 * sc, hipY);
+    const tgF = ctx.createLinearGradient(-0.44 * sc, shoY, 0.44 * sc, hipY);
     tgF.addColorStop(0, MK_SKY);
     tgF.addColorStop(0.5, MK_TEAL);
     tgF.addColorStop(1, MK_TEAL_D);
     ctx.fillStyle = tgF;
     ctx.fill();
-    // right-side shadow band
+    // right-side shadow band (re-traces the right half of the bodice).
     ctx.fillStyle = `rgba(2,48,71,0.35)`;
     ctx.beginPath();
-    ctx.moveTo(0.40 * sc, shoY);
-    ctx.quadraticCurveTo(0.52 * sc, (shoY + hipY) * 0.5, 0.40 * sc, hipY);
-    ctx.lineTo(0.14 * sc, hipY);
+    ctx.moveTo(0.44 * sc, shoY);
+    ctx.quadraticCurveTo(0.50 * sc, shoY + 0.20 * sc,
+                          0.40 * sc, shoY + 0.42 * sc);
+    ctx.quadraticCurveTo(0.28 * sc, waistY - 0.10 * sc,
+                          waistHalfW, waistY);
+    ctx.lineTo(0.10 * sc, waistY);
     ctx.lineTo(0.12 * sc, shoY - 0.02 * sc);
     ctx.closePath();
     ctx.fill();
+    // outline the whole hourglass bodice
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 1.10;
     ctx.beginPath();
-    ctx.moveTo(-0.40 * sc, shoY);
-    ctx.quadraticCurveTo(-0.52 * sc, (shoY + hipY) * 0.5, -0.40 * sc, hipY);
-    ctx.lineTo(0.40 * sc, hipY);
-    ctx.quadraticCurveTo(0.52 * sc, (shoY + hipY) * 0.5, 0.40 * sc, shoY);
-    ctx.quadraticCurveTo(0, shoY - 0.20 * sc, -0.40 * sc, shoY);
+    ctx.moveTo(-0.44 * sc, shoY);
+    ctx.quadraticCurveTo(-0.50 * sc, shoY + 0.20 * sc,
+                         -0.40 * sc, shoY + 0.42 * sc);
+    ctx.quadraticCurveTo(-0.28 * sc, waistY - 0.10 * sc,
+                         -waistHalfW, waistY);
+    ctx.lineTo(waistHalfW, waistY);
+    ctx.quadraticCurveTo(0.28 * sc, waistY - 0.10 * sc,
+                          0.40 * sc, shoY + 0.42 * sc);
+    ctx.quadraticCurveTo(0.50 * sc, shoY + 0.20 * sc,
+                          0.44 * sc, shoY);
+    ctx.quadraticCurveTo(0, shoY - 0.20 * sc, -0.44 * sc, shoY);
     ctx.closePath();
     ctx.stroke();
-    // Light-blue lapels along the chest opening.
+    // Light-blue sweetheart neckline / lapels along the chest opening.
     ctx.strokeStyle = MK_SKY;
     ctx.lineWidth = 0.034 * sc;
     ctx.beginPath();
-    ctx.moveTo(-0.20 * sc, shoY);
-    ctx.lineTo(-0.04 * sc, hipY - 0.04 * sc);
-    ctx.moveTo(0.20 * sc, shoY);
-    ctx.lineTo(0.04 * sc, hipY - 0.04 * sc);
+    ctx.moveTo(-0.22 * sc, shoY - 0.02 * sc);
+    ctx.quadraticCurveTo(0, shoY + 0.16 * sc, 0.22 * sc, shoY - 0.02 * sc);
     ctx.stroke();
-    // Gold buttons in two columns
-    drawCoatButtons(-0.10 * sc, shoY + 0.16 * sc, hipY - 0.10 * sc);
-    drawCoatButtons( 0.10 * sc, shoY + 0.16 * sc, hipY - 0.10 * sc);
+    // Gold buttons down the centre of the bodice.
+    drawCoatButtons(0, shoY + 0.22 * sc, waistY - 0.10 * sc);
 
-    // ── coat skirt (long mid-thigh hem) ──
+    // ── A-line short skirt (flares from cinched waist to above-knee hem) ──
     {
-      const coatHemY = hipY + 0.62 * sc;
+      const hemY = hipY + 0.20 * sc;   // SHORT — was hipY + 0.32
+      const hemHalfW = 0.50 * sc;       // FLARED — was 0.46
       ctx.fillStyle = MK_TEAL_D;
       ctx.beginPath();
-      ctx.moveTo(-0.40 * sc, hipY + 0.04 * sc);
-      ctx.quadraticCurveTo(-0.54 * sc + flutter * 0.3,
-                           (hipY + coatHemY) * 0.5,
-                           -0.46 * sc + flutter * 0.5, coatHemY);
-      ctx.quadraticCurveTo(0, coatHemY + 0.12 * sc,
-                            0.46 * sc - flutter * 0.5, coatHemY);
-      ctx.quadraticCurveTo(0.54 * sc - flutter * 0.3,
-                           (hipY + coatHemY) * 0.5,
-                           0.40 * sc, hipY + 0.04 * sc);
+      ctx.moveTo(-waistHalfW, hipY + 0.04 * sc);
+      ctx.quadraticCurveTo(-0.40 * sc + flutter * 0.3,
+                           (hipY + hemY) * 0.5,
+                           -hemHalfW + flutter * 0.5, hemY);
+      ctx.quadraticCurveTo(0, hemY + 0.12 * sc,
+                            hemHalfW - flutter * 0.5, hemY);
+      ctx.quadraticCurveTo(0.40 * sc - flutter * 0.3,
+                           (hipY + hemY) * 0.5,
+                            waistHalfW, hipY + 0.04 * sc);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.9; ctx.stroke();
+      // Lighter teal lit-side overlay (left half of the skirt catches light).
+      ctx.fillStyle = MK_TEAL;
+      ctx.beginPath();
+      ctx.moveTo(0, hipY + 0.04 * sc);
+      ctx.quadraticCurveTo(-0.18 * sc + flutter * 0.3,
+                           (hipY + hemY) * 0.5,
+                           -hemHalfW + flutter * 0.5, hemY);
+      ctx.quadraticCurveTo(-0.25 * sc, hemY + 0.08 * sc, 0, hemY + 0.02 * sc);
+      ctx.closePath();
+      ctx.fill();
       // Gold trim along the hem.
       ctx.strokeStyle = MK_GOLD;
       ctx.lineWidth = 0.026 * sc;
       ctx.beginPath();
-      ctx.moveTo(-0.40 * sc + flutter * 0.3, coatHemY - 0.04 * sc);
-      ctx.quadraticCurveTo(0, coatHemY + 0.10 * sc,
-                           0.40 * sc - flutter * 0.3, coatHemY - 0.04 * sc);
+      ctx.moveTo(-hemHalfW + 0.02 * sc + flutter * 0.3, hemY - 0.04 * sc);
+      ctx.quadraticCurveTo(0, hemY + 0.10 * sc,
+                            hemHalfW - 0.02 * sc - flutter * 0.3, hemY - 0.04 * sc);
       ctx.stroke();
-      // Center seam.
+      // Centre seam down the skirt.
       ctx.strokeStyle = MK_NAVY;
       ctx.lineWidth = 0.022 * sc;
       ctx.beginPath();
       ctx.moveTo(0, hipY + 0.04 * sc);
-      ctx.lineTo(0, coatHemY + 0.04 * sc);
+      ctx.lineTo(0, hemY + 0.04 * sc);
       ctx.stroke();
     }
 
-    // ── belt + buckle ──
+    // ── narrow belt + buckle at the cinched waist ──
     ctx.fillStyle = MK_NAVY;
-    rr(ctx, -0.44 * sc, hipY - 0.06 * sc, 0.88 * sc, 0.18 * sc, 0.04 * sc);
+    rr(ctx, -0.30 * sc, hipY - 0.06 * sc, 0.60 * sc, 0.16 * sc, 0.04 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
     ctx.fillStyle = MK_GOLD;
-    rr(ctx, -0.10 * sc, hipY - 0.04 * sc, 0.20 * sc, 0.16 * sc, 0.025 * sc);
+    rr(ctx, -0.10 * sc, hipY - 0.04 * sc, 0.20 * sc, 0.14 * sc, 0.025 * sc);
     ctx.fill();
     ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.022 * sc; ctx.stroke();
     ctx.fillStyle = MK_NAVY;
     ctx.beginPath();
-    ctx.arc(0, hipY + 0.04 * sc, 0.040 * sc, 0, TAU);
+    ctx.arc(0, hipY + 0.03 * sc, 0.038 * sc, 0, TAU);
     ctx.fill();
     ctx.fillStyle = MK_GOLD_HI;
-    ctx.fillRect(-0.06 * sc, hipY - 0.02 * sc, 0.04 * sc, 0.020 * sc);
+    ctx.fillRect(-0.06 * sc, hipY - 0.02 * sc, 0.04 * sc, 0.018 * sc);
 
     // ── ponytail drapes behind from one side ──
     drawPonytail(-0.18 * sc, headY + 0.38 * sc, -1, -recoilFan * 0.30);
@@ -7800,9 +8250,9 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     const frontHandXF = lerp(-0.10 * sc, -0.12 * sc, shoulder);
     const frontHandYF = lerp(shoY + 0.30 * sc, shoY + 0.10 * sc, shoulder);
 
-    // Back arm (trigger).
+    // Back arm (trigger) — thicker.
     ctx.fillStyle = MK_TEAL;
-    capsule(ctx, backShXF, backShYF, backHandXF, backHandYF, 0.10 * sc);
+    capsule(ctx, backShXF, backShYF, backHandXF, backHandYF, 0.14 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
     // hand
@@ -7817,9 +8267,9 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     ctx.beginPath(); ctx.arc(0.08 * sc, 0, 0.07 * sc, 0, TAU); ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
     ctx.restore();
-    // Front arm (off-hand).
+    // Front arm (off-hand) — thicker.
     ctx.fillStyle = MK_TEAL;
-    capsule(ctx, frontShXF, frontShYF, frontHandXF, frontHandYF, 0.10 * sc);
+    capsule(ctx, frontShXF, frontShYF, frontHandXF, frontHandYF, 0.14 * sc);
     ctx.fill();
     ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
     ctx.save();
@@ -7843,15 +8293,24 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     ctx.restore();
 
     // Head + hat go ABOVE the front arm so the eyes aren't hidden.
+    // Whole head + hat + plume + eyes scales up around the chin pivot.
     ctx.save();
-    drawSkinFront(0);
-    drawTricornFront(0);
-    // Plume rises from the side of the tricorn (right side of head).
-    ctx.save();
-    ctx.translate(0.20 * sc, headY - 0.30 * sc);
-    drawPlume(0, 0, 0.56 * sc, plume);
-    ctx.restore();
-    drawEyesFront(0);
+    {
+      const pY = HEAD_PIVOT_Y();
+      ctx.save();
+      ctx.translate(0, pY);
+      ctx.scale(HEAD_S, HEAD_S);
+      ctx.translate(0, -pY);
+      drawSkinFront(0);
+      drawTricornFront(0);
+      // Plume rises from the side of the tricorn (right side of head).
+      ctx.save();
+      ctx.translate(0.20 * sc, headY - 0.30 * sc);
+      drawPlume(0, 0, 0.56 * sc, plume);
+      ctx.restore();
+      drawEyesFront(0);
+      ctx.restore();
+    }
     ctx.restore();
 
   // ── BACK VIEW ──────────────────────────────────────────────────────────
@@ -7866,12 +8325,14 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     const drawBackLeg = (side, footLift) => {
       const x = side * legSpreadB;
       const footPt = baseY - footLift;
-      ctx.fillStyle = MK_TEAL_D;
-      capsule(ctx, x, hipY + 0.02 * sc, x, footPt - 0.02 * sc, 0.13 * sc);
+      // Thicker peach legs from behind (chibi proportions).
+      ctx.fillStyle = MK_SKIN;
+      capsule(ctx, x, hipY + 0.10 * sc, x, footPt - 0.40 * sc, 0.13 * sc);
       ctx.fill();
-      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      ctx.fillStyle = MK_TEAL;
-      capsule(ctx, x, hipY + 0.20 * sc, x, footPt - 0.18 * sc, 0.05 * sc);
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
+      ctx.fillStyle = `rgba(232,168,155,0.50)`;
+      capsule(ctx, x - side * 0.05 * sc, hipY + 0.16 * sc,
+                   x - side * 0.05 * sc, footPt - 0.42 * sc, 0.050 * sc);
       ctx.fill();
       // navy boot back
       ctx.fillStyle = MK_NAVY;
@@ -7890,48 +8351,79 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
     drawBackLeg(-1, liftL);
     drawBackLeg(1, liftR);
 
-    // ── coat back (full panel, gold trim seam down the spine) ──
+    // ── hourglass back panel + A-line short skirt ──
+    // Single continuous silhouette: wide shoulders, cinched at the waist
+    // (hipY), then flared A-line short skirt above the knee.
     {
-      const ky0 = shoY + 0.06 * sc;
-      const kyB = hipY + 0.62 * sc;
+      const ky0 = shoY + 0.02 * sc;       // top of bodice
+      const waistY = hipY;                  // cinch
+      const waistHalfW = 0.22 * sc;         // cinched waist half-width
+      const kyB = hipY + 0.20 * sc;         // SHORT hem (was hipY + 0.34)
+      const hemHalfW = 0.50 * sc;           // flared hem half-width
+      // Full silhouette (bodice + skirt) in one path.
       ctx.fillStyle = MK_TEAL;
       ctx.beginPath();
+      // shoulder line (left side, top)
       ctx.moveTo(-0.46 * sc, ky0);
-      ctx.quadraticCurveTo(-0.58 * sc + flutter * 0.3, hipY + 0.30 * sc,
-                           -0.46 * sc + flutter * 0.5, kyB);
-      ctx.quadraticCurveTo(0, kyB + 0.16 * sc + flutter * 0.4,
-                           0.46 * sc - flutter * 0.5, kyB);
-      ctx.quadraticCurveTo(0.58 * sc - flutter * 0.3, hipY + 0.30 * sc,
-                           0.46 * sc, ky0);
+      // back bulge → cinch into waist (left)
+      ctx.quadraticCurveTo(-0.52 * sc, shoY + 0.38 * sc,
+                           -waistHalfW, waistY);
+      // skirt flare from waist out to hem (left)
+      ctx.quadraticCurveTo(-0.40 * sc + flutter * 0.3,
+                           (waistY + kyB) * 0.5,
+                           -hemHalfW + flutter * 0.5, kyB);
+      // curved hem across the bottom
+      ctx.quadraticCurveTo(0, kyB + 0.14 * sc + flutter * 0.4,
+                            hemHalfW - flutter * 0.5, kyB);
+      // skirt flare back up to waist (right)
+      ctx.quadraticCurveTo(0.40 * sc - flutter * 0.3,
+                           (waistY + kyB) * 0.5,
+                            waistHalfW, waistY);
+      // cinch out to shoulder (right)
+      ctx.quadraticCurveTo(0.52 * sc, shoY + 0.38 * sc,
+                            0.46 * sc, ky0);
+      // collar / shoulder line across top
       ctx.quadraticCurveTo(0, ky0 - 0.14 * sc, -0.46 * sc, ky0);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-      // gold spine seam
+      // Gold spine seam down the centre of the bodice + skirt.
       ctx.strokeStyle = MK_GOLD;
-      ctx.lineWidth = 0.038 * sc;
+      ctx.lineWidth = 0.034 * sc;
       ctx.beginPath();
       ctx.moveTo(0, ky0 + 0.02 * sc);
-      ctx.quadraticCurveTo(flutter * 0.3, (shoY + hipY) * 0.5,
-                           flutter * 0.5, hipY + 0.50 * sc);
-      ctx.lineTo(flutter * 0.4, kyB - 0.10 * sc);
+      ctx.quadraticCurveTo(flutter * 0.3, (shoY + waistY) * 0.5,
+                           flutter * 0.4, waistY - 0.02 * sc);
+      ctx.moveTo(flutter * 0.4, waistY + 0.10 * sc);
+      ctx.lineTo(flutter * 0.4, kyB - 0.04 * sc);
       ctx.stroke();
-      // sky-blue highlight stripe
+      // Sky-blue highlight stripe down one side of the back.
       ctx.strokeStyle = MK_SKY;
-      ctx.lineWidth = 0.024 * sc;
+      ctx.lineWidth = 0.022 * sc;
       ctx.beginPath();
-      ctx.moveTo(-0.36 * sc, hipY);
-      ctx.quadraticCurveTo(-0.24 * sc + flutter * 0.2, (hipY + kyB) * 0.5,
-                           -0.20 * sc + flutter * 0.3, kyB - 0.08 * sc);
+      ctx.moveTo(-0.34 * sc, shoY + 0.18 * sc);
+      ctx.quadraticCurveTo(-0.24 * sc, (shoY + waistY) * 0.5,
+                           -waistHalfW + 0.04 * sc, waistY - 0.04 * sc);
       ctx.stroke();
-      // hem trim (gold)
+      // Gold hem trim along the curved bottom.
       ctx.strokeStyle = MK_GOLD;
       ctx.lineWidth = 0.030 * sc;
       ctx.beginPath();
-      ctx.moveTo(-0.46 * sc, kyB - 0.04 * sc);
+      ctx.moveTo(-hemHalfW + 0.02 * sc, kyB - 0.04 * sc);
       ctx.quadraticCurveTo(0, kyB + 0.14 * sc + flutter * 0.4,
-                            0.46 * sc, kyB - 0.04 * sc);
+                            hemHalfW - 0.02 * sc, kyB - 0.04 * sc);
       ctx.stroke();
+      // Visible narrow belt cinching the waist (across the back).
+      ctx.fillStyle = MK_NAVY;
+      rr(ctx, -waistHalfW - 0.02 * sc, waistY - 0.06 * sc,
+          waistHalfW * 2 + 0.04 * sc, 0.16 * sc, 0.04 * sc);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.8; ctx.stroke();
+      // Small gold belt seam down the centre of the back belt.
+      ctx.fillStyle = MK_GOLD;
+      rr(ctx, -0.04 * sc, waistY - 0.05 * sc, 0.08 * sc, 0.14 * sc, 0.020 * sc);
+      ctx.fill();
+      ctx.strokeStyle = MK_NAVY_D; ctx.lineWidth = 0.018 * sc; ctx.stroke();
     }
 
     // ── musket slung over one shoulder, barrel up-back ──
@@ -7944,16 +8436,29 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
       ctx.restore();
     }
 
-    // ── orange ponytail straight down the spine ──
-    drawPonytail(0, headY + 0.36 * sc, 0, 0);
+    // ── back of head (orange hair) + tricorn from behind ──
+    // Draw the hair-covered skull FIRST so the tricorn sits on top of it.
+    // The whole head unit scales up around the chin pivot for chibi cuteness.
+    {
+      const pY = HEAD_PIVOT_Y();
+      ctx.save();
+      ctx.translate(0, pY);
+      ctx.scale(HEAD_S, HEAD_S);
+      ctx.translate(0, -pY);
+      drawHeadBack(0);
+      drawTricornBack(0);
+      // Plume rises from the side (visible from behind).
+      ctx.save();
+      ctx.translate(0.22 * sc, headY - 0.28 * sc);
+      drawPlume(0, 0, 0.56 * sc, plume);
+      ctx.restore();
+      ctx.restore();
+    }
 
-    // ── tricorn from behind ──
-    drawTricornBack(0);
-    // Plume rises from the side (visible from behind).
-    ctx.save();
-    ctx.translate(0.22 * sc, headY - 0.28 * sc);
-    drawPlume(0, 0, 0.56 * sc, plume);
-    ctx.restore();
+    // ── orange ponytail tied at the nape — drawn AFTER the head so the
+    // navy tying band visually sits on the back of the hair, with the
+    // tail draping down past the head outline over the coat back.
+    drawPonytail(0, headY + 0.36 * sc, 0, 0);
   }
 
   // ── hit flash (white wash over the whole figure) ──
@@ -8078,13 +8583,15 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
     // Archer poof uses a teal-tinted ring (matches its hooded-ranger palette),
     // Goblin poof uses a mid-green ring (matches the leaf-goblin palette),
     // Minion poof uses a dark-navy ring (matches the bat-imp palette),
-    // Musketeer poof uses a teal-blue ring (matches the heroine's palette);
+    // Musketeer poof uses a teal-blue ring (matches the heroine's palette),
+    // Cannon poof uses an iron-grey ring (matches the artillery palette);
     // everyone else uses team colour.
     const teamRgb = d.musketeer ? '33,158,188'
                   : (d.minion ? '27,38,59'
                   : (d.goblin ? '106,153,78'
                   : (d.archer ? '0,109,119'
-                  : (d.owner === 0 ? '20,33,61' : '252,163,17'))));
+                  : (d.cannon ? '124,130,142'
+                  : (d.owner === 0 ? '20,33,61' : '252,163,17')))));
 
     // expanding shock ring (team-tinted)
     ctx.strokeStyle = `rgba(${teamRgb},${0.70 * t})`;
@@ -8100,6 +8607,27 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
                 T * (0.18 + age * 0.18), 0, 0, TAU);
     ctx.fill();
 
+    // Cannon-specific drifting smoke puffs (drawn before shards so they read
+    // as background haze). Drift outward + up, expand and fade as they age.
+    if (d.cannon && d.puffs) {
+      for (const pf of d.puffs) {
+        const r = T * (0.18 + age * pf.speed * 1.4) + T * pf.r0;
+        const px = cx + Math.cos(pf.ang) * T * (0.20 + age * pf.speed * 1.6);
+        const py = cy + Math.sin(pf.ang) * T * (0.20 + age * pf.speed * 1.0)
+                       - age * T * 0.55; // rise
+        const alpha = (1 - age / Math.max(0.01, pf.life)) * 0.45;
+        if (alpha <= 0.01) continue;
+        ctx.fillStyle = `rgba(190,190,190,${alpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${alpha * 0.45})`;
+        ctx.beginPath();
+        ctx.arc(px - r * 0.25, py - r * 0.25, r * 0.45, 0, TAU);
+        ctx.fill();
+      }
+    }
+
     // spinning armor shards (kind 3 = warm wood/kilt scrap, used by Giant)
     if (d.shards) {
       for (const sh of d.shards) {
@@ -8111,6 +8639,70 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(rot);
+        if (d.cannon) {
+          // Cannon-specific shards: broken oak planks with iron banding,
+          // bent iron strap fragments, and small bright-brass bits (ring
+          // shards from the barrel reinforcement bands).
+          ctx.strokeStyle = `rgba(0,0,0,${0.85 * alpha})`;
+          ctx.lineWidth = 1.1 * psc;
+          if (sh.kind === 0) {
+            // Broken oak plank with a dark grain stripe + scorched corner.
+            ctx.fillStyle = `rgba(122,74,35,${0.95 * alpha})`;
+            ctx.beginPath();
+            ctx.rect(-T * 0.14, -T * 0.045, T * 0.28, T * 0.090);
+            ctx.fill(); ctx.stroke();
+            // dark grain
+            ctx.fillStyle = `rgba(74,43,20,${0.85 * alpha})`;
+            ctx.fillRect(-T * 0.14, -T * 0.005, T * 0.28, T * 0.012);
+            // scorched corner
+            ctx.fillStyle = `rgba(10,10,10,${0.85 * alpha})`;
+            ctx.fillRect(T * 0.08, -T * 0.045, T * 0.06, T * 0.090);
+            // small iron rivet
+            ctx.fillStyle = `rgba(207,211,218,${0.95 * alpha})`;
+            ctx.beginPath();
+            ctx.arc(-T * 0.08, 0, T * 0.020, 0, TAU);
+            ctx.fill();
+          } else if (sh.kind === 1) {
+            // Bent iron strap — dark elongated quad with a brushed steel
+            // catch highlight along the top edge.
+            ctx.fillStyle = `rgba(58,63,72,${0.95 * alpha})`;
+            ctx.beginPath();
+            ctx.moveTo(-T * 0.16, -T * 0.030);
+            ctx.lineTo(T * 0.10, -T * 0.045);
+            ctx.lineTo(T * 0.16, T * 0.020);
+            ctx.lineTo(-T * 0.10, T * 0.040);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            // steel highlight along the leading edge
+            ctx.strokeStyle = `rgba(207,211,218,${0.85 * alpha})`;
+            ctx.lineWidth = 1.4 * psc;
+            ctx.beginPath();
+            ctx.moveTo(-T * 0.15, -T * 0.024);
+            ctx.lineTo(T * 0.09, -T * 0.038);
+            ctx.stroke();
+          } else {
+            // Brass ring shard — small curved chunk in warm gold.
+            ctx.fillStyle = `rgba(201,145,42,${0.95 * alpha})`;
+            ctx.beginPath();
+            ctx.moveTo(-T * 0.10, -T * 0.020);
+            ctx.quadraticCurveTo(0, -T * 0.060, T * 0.10, -T * 0.020);
+            ctx.lineTo(T * 0.10, T * 0.020);
+            ctx.quadraticCurveTo(0, -T * 0.018, -T * 0.10, T * 0.020);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            // bright catch on top
+            ctx.fillStyle = `rgba(255,216,122,${0.95 * alpha})`;
+            ctx.beginPath();
+            ctx.moveTo(-T * 0.07, -T * 0.018);
+            ctx.quadraticCurveTo(0, -T * 0.045, T * 0.07, -T * 0.018);
+            ctx.lineTo(T * 0.05, -T * 0.005);
+            ctx.quadraticCurveTo(0, -T * 0.030, -T * 0.05, -T * 0.005);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+          continue;
+        }
         if (d.musketeer) {
           // Musketeer-specific shards: torn teal coat scraps with a light-
           // blue trim band, white/gray gunpowder smoke puffs, brass-gold
@@ -9209,25 +9801,620 @@ export function drawArrowsImpact(ctx, x, y, tile, age, radius, t, opts = {}) {
   ctx.restore(); // end transform
 }
 
+// ── Cannon (defensive building) ──────────────────────────────────────────────
+// A wooden gun-carriage on a cobble base, with a brass-banded iron barrel
+// that *smoothly rotates* to track its target. The whole rig is stationary
+// (no gait, no bob, no lean), but it ANIMATES on three timelines:
+//
+//   aim       — `aimAng` lerps toward the latest target angle each frame, at
+//               a capped turn-rate (≈3 rad/s). This is what gives the cannon
+//               its "tracking" feel and matches the in-game HasRotationOnTimeline
+//               flag from buildings.csv (TurretMovement=15).
+//   recoil    — engine bumps u.cooldown to hitSpeed on each shot; the rising
+//               edge starts a 0.30 s recoil animation: barrel jerks back,
+//               then settles. Muzzle flash + smoke puff are driven off this.
+//   spawn     — same rune-ring entrance every other unit gets (u.deployTimer).
+//
+// Lifetime: the engine self-destructs a Cannon at 30 s regardless of HP. The
+// sprite reads `u.lifetime` to dim slightly + tint amber in the last ~6 s so
+// the upcoming despawn is legible. Death poof is wired via markCannon() +
+// sweepAnim() (rubble chunks, scorched wood, dirty grey smoke).
+//
+// Per-unit rig state lives in a local `cannonRig` map keyed by unit id; it
+// tracks aimAng, attack-timeline carry-over (atkT), hit flash, and a few
+// transient smoke puffs ejected at each muzzle burst (so smoke keeps drifting
+// after the shot even when the cooldown is over).
+const cannonRig = new Map();
+
+// Palette — warm wood + brass barrel + soot. Team color appears only on the
+// banner so the cannon itself reads as a neutral piece of artillery owned by
+// the player flying that flag.
+const CN_WOOD_HI  = '#a96b3a';   // top-lit oak
+const CN_WOOD    = '#7a4a23';    // body mid-tone
+const CN_WOOD_LO = '#4a2b14';    // shadow side / inside the carriage
+const CN_IRON_HI = '#cfd3da';
+const CN_IRON    = '#7c828e';
+const CN_IRON_LO = '#3a3f48';
+const CN_BRASS_HI= '#ffd87a';
+const CN_BRASS   = '#c9912a';
+const CN_BRASS_LO= '#7a5410';
+const CN_STONE_HI= '#cfc6b5';
+const CN_STONE   = '#9a907c';
+const CN_STONE_LO= '#5a5142';
+const CN_BLACK   = '#0a0a0a';
+const CN_OL      = '#000000';
+
+// Smooth angle towards a target, shortest direction, capped by max delta.
+function _turnToward(cur, want, maxStep) {
+  let d = want - cur;
+  // Wrap to [-π, π] so we always take the shorter arc.
+  while (d >  Math.PI) d -= TAU;
+  while (d < -Math.PI) d += TAU;
+  if (d >  maxStep) d =  maxStep;
+  if (d < -maxStep) d = -maxStep;
+  return cur + d;
+}
+
+// Public entry — call once per frame for every alive Cannon.
+//   gx, gy   : screen-space ground anchor (cannon's tile position)
+//   tile     : pixels per tile
+//   u        : the unit (carries hp/maxHp/deployTimer/cooldown/lifetime/maxLifetime/owner)
+//   targetSc : optional { x, y } in SCREEN coords — the unit the cannon is
+//              aiming at; the barrel rotates toward it. May be null (idle).
+//   dtReal   : real-time delta from beginFrame(); used for smooth aim + smoke.
+export function drawCannon(ctx, gx, gy, tile, u, targetSc, dtReal) {
+  // ── rig: fetch or create persistent per-unit anim state ───────────────────
+  let a = cannonRig.get(u.id);
+  if (!a) {
+    // Initial barrel angle: face the enemy field (P0 cannons aim up, P1 down).
+    const startAng = u.owner === 0 ? -Math.PI / 2 : Math.PI / 2;
+    a = {
+      aimAng: startAng,
+      atkT: 0,
+      lastCd: u.cooldown,
+      flashT: 0,
+      lastHp: u.hp,
+      smoke: [],            // [{x,y,r,age,life}, ...] world-space drift
+      seen: true,
+      owner: u.owner,
+      lx: u.x, ly: u.y,     // remembered for sweepAnim death poof
+    };
+    cannonRig.set(u.id, a);
+  }
+  a.seen = true;
+  a.lx = u.x; a.ly = u.y;
+
+  // Attack rising-edge detector (matches getAnim's pattern for troops).
+  if (u.cooldown > a.lastCd + 1e-6) {
+    a.atkT = SWING;
+    // Spawn 2 puffs at the muzzle tip (positions resolved later via current
+    // aim angle). We just record the angle/time; world-space position is
+    // baked in once we know the muzzle location below.
+    a._wantPuff = 2;
+  }
+  a.lastCd = u.cooldown;
+  if (a.atkT > 0) a.atkT = Math.max(0, a.atkT - dtReal);
+
+  // Hit flash (matches troops).
+  if (u.hp < a.lastHp - 0.5) a.flashT = FLASH;
+  a.lastHp = u.hp;
+  if (a.flashT > 0) a.flashT = Math.max(0, a.flashT - dtReal);
+
+  // Smooth aim — turn at ≤3 rad/s toward the target's screen-space angle.
+  // While deploying, lock the angle (cannon is "building itself"); also lock
+  // if no target so the barrel doesn't snap to zero between volleys.
+  if (targetSc && u.deployTimer <= 0) {
+    const wantAng = Math.atan2(targetSc.y - gy, targetSc.x - gx);
+    a.aimAng = _turnToward(a.aimAng, wantAng, 3.0 * dtReal);
+  }
+
+  // ── scale / spawn growth (matches troops' easeOut entrance) ───────────────
+  // Tuned so the 2.5D top-down sprite reads as ~3 tiles wide × ~3 tiles tall
+  // on screen. The wooden trestle footprint is `halfW * 2 = sc * 2` ≈ 3 tiles
+  // (matches the engine's 3×3 collision footprint, def.radius = 1.5).
+  const S = tile * 1.50;
+  const spawnF = u.deployTimer > 0 ? clamp01(1 - u.deployTimer / 1.0) : 1;
+  const grow = lerp(0.4, 1, easeOut(spawnF));
+  const sc = S * grow;
+
+  // Lifetime tint: dim + amber in the last 6 s so the upcoming despawn reads.
+  const lifeRemain = u.lifetime != null ? u.lifetime : 30;
+  const lifeFade = lifeRemain < 6
+    ? clamp01((6 - lifeRemain) / 6)  // 0 → 1 as lifetime drains
+    : 0;
+
+  // Recoil — mortar pulls back along its aim vector, then settles.
+  const s = 1 - a.atkT / SWING;   // 0..1 progression through the swing
+  let recoil = 0, muzzleFlash = 0;
+  if (a.atkT > 0) {
+    if (s < 0.25) { recoil = easeOut(s / 0.25); muzzleFlash = recoil; }
+    else { recoil = 1 - easeOut((s - 0.25) / 0.75); muzzleFlash = 0; }
+  }
+  const teamRgb = u.owner === 0 ? '70,177,255' : '255,107,102';
+  const teamCol = u.owner === 0 ? '#46b1ff' : '#ff6b66';
+  const teamDim = u.owner === 0 ? '#1d6fae' : '#b53f3b';
+
+  // Stable per-id pseudo-random tints so a given Cannon always looks
+  // identical across frames (wood-grain knot positions etc.).
+  const idHash = (i) => {
+    const v = Math.sin(i * 12.9898 + (u.id || 1) * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  };
+
+  ctx.save();
+  ctx.globalAlpha = lerp(0.30, 1, easeOut(spawnF));
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+
+  // ── ground shadow (compact, under the trestle's feet) ────────────────────
+  ctx.fillStyle = `rgba(0,0,0,${0.52 * (1 - lifeFade * 0.20)})`;
+  ctx.beginPath();
+  ctx.ellipse(gx + sc * 0.04, gy + sc * 0.10, sc * 0.85, sc * 0.32, 0, 0, TAU);
+  ctx.fill();
+
+  // ── spawn rune ring (only during deployTimer) ────────────────────────────
+  if (spawnF < 1) {
+    const inv = 1 - spawnF;
+    ctx.strokeStyle = `rgba(${teamRgb},${0.85 * inv})`;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.ellipse(gx, gy + sc * 0.05, sc * (0.90 + spawnF * 0.5), sc * 0.36 * (0.90 + spawnF * 0.5), 0, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255,216,122,${0.95 * inv})`;
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * TAU + spawnF * 0.5;
+      const rx = sc * (0.85 + spawnF * 0.45);
+      const ry = sc * 0.34 * (0.85 + spawnF * 0.45);
+      ctx.beginPath();
+      ctx.arc(gx + Math.cos(ang) * rx, gy + Math.sin(ang) * ry, 0.10 * sc, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  // ── 2.5D TOP-DOWN LAYOUT (sq. 3×3 footprint, rotating barrel) ────────────
+  // The world ground footprint is a 3×3-tile square centred on (gx, gy). The
+  // screen projection squishes its world-Z (depth) axis by `persp` so the
+  // top of the trestle reads as an oval, matching the game's other 2.5D
+  // sprites (towers etc.).
+  //
+  // Vertical landmarks on screen (smaller y = higher = farther into scene):
+  //   gy + sc*0.10 : ground line / front-bottom of base
+  //   gy - sc*0.45 : pivot point on the saddle (where barrel rotates)
+  //   gy - sc*1.20 : top-back of base / saddle back edge
+  //   gy - sc*1.70 : top of HP-bar headroom (handled by renderer)
+  //
+  // Total span: from gy+0.10 to ~gy-1.20 = sc*1.30 ≈ 2 tiles for the sprite;
+  // the HP bar sits another ~tile above, putting the full silhouette at ~3
+  // tiles wide × ~3 tiles tall — the 3×3 square the user asked for.
+  const halfW       = sc * 0.70;        // half-width (foundation 0.7× = ~2 tiles)
+  const persp       = 0.55;             // 2.5D Y-squish (towers + other 2.5D)
+  const baseTopBackY  = gy - sc * 1.20; // back-top of saddle (deepest into scene)
+  const baseTopFrontY = gy - sc * 0.45; // front-top of saddle (top of the visible rim)
+  const baseFrontBotY = gy + sc * 0.10; // bottom of the wood "skirt" (ground line)
+  const pivotX        = gx;
+  const pivotY        = (baseTopBackY + baseTopFrontY) * 0.5 - sc * 0.04;
+
+  // ── wooden trestle base (NOT rotated, drawn 2.5D top-down) ──────────────
+  // ── 1. back-corner posts (drawn first so the saddle paints over them) ──
+  const postW = sc * 0.14;
+  for (const sxs of [-1, 1]) {
+    const px = gx + sxs * halfW * 0.80;
+    ctx.fillStyle = CN_WOOD_LO;
+    rr(ctx, px - postW * 0.5, baseTopBackY - sc * 0.02, postW, sc * 0.20, sc * 0.02);
+    ctx.fill();
+    ctx.strokeStyle = CN_OL;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+
+  // ── 2. saddle top — a Y-squished rectangle (the lit upper surface) ──
+  // Trapezoidal: back edge narrower than front (perspective).
+  ctx.fillStyle = CN_WOOD;
+  ctx.beginPath();
+  ctx.moveTo(gx - halfW * 0.78, baseTopBackY);
+  ctx.lineTo(gx + halfW * 0.78, baseTopBackY);
+  ctx.lineTo(gx + halfW * 0.96, baseTopFrontY);
+  ctx.lineTo(gx - halfW * 0.96, baseTopFrontY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = CN_OL;
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  // Top-lit highlight along the back edge (sun from above-back)
+  ctx.fillStyle = CN_WOOD_HI;
+  ctx.beginPath();
+  ctx.moveTo(gx - halfW * 0.78, baseTopBackY);
+  ctx.lineTo(gx + halfW * 0.78, baseTopBackY);
+  ctx.lineTo(gx + halfW * 0.82, baseTopBackY + sc * 0.10);
+  ctx.lineTo(gx - halfW * 0.82, baseTopBackY + sc * 0.10);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wood-grain stripes (subtle, follow the perspective)
+  ctx.strokeStyle = CN_WOOD_LO;
+  ctx.lineWidth = 1.0;
+  for (let i = 0; i < 3; i++) {
+    const t = 0.30 + i * 0.22;
+    const xL = gx + (-halfW * 0.78) * (1 - t) + (-halfW * 0.96) * t + idHash(i + 10) * 3;
+    const xR = gx + ( halfW * 0.78) * (1 - t) + ( halfW * 0.96) * t + idHash(i + 20) * 3;
+    const yy = baseTopBackY + (baseTopFrontY - baseTopBackY) * t;
+    ctx.beginPath();
+    ctx.moveTo(xL, yy);
+    ctx.lineTo(xR, yy);
+    ctx.stroke();
+  }
+
+  // X-cross brace VISIBLE on the saddle top (sawhorse signature)
+  ctx.strokeStyle = CN_WOOD_LO;
+  ctx.lineWidth = sc * 0.08;
+  ctx.beginPath();
+  ctx.moveTo(gx - halfW * 0.74, baseTopBackY + sc * 0.04);
+  ctx.lineTo(gx + halfW * 0.90, baseTopFrontY - sc * 0.04);
+  ctx.moveTo(gx + halfW * 0.74, baseTopBackY + sc * 0.04);
+  ctx.lineTo(gx - halfW * 0.90, baseTopFrontY - sc * 0.04);
+  ctx.stroke();
+
+  // ── 3. front face of the saddle (visible vertical strip, the wood thickness) ──
+  ctx.fillStyle = CN_WOOD_LO;
+  ctx.beginPath();
+  ctx.moveTo(gx - halfW * 0.96, baseTopFrontY);
+  ctx.lineTo(gx + halfW * 0.96, baseTopFrontY);
+  ctx.lineTo(gx + halfW * 0.96, baseFrontBotY);
+  ctx.lineTo(gx - halfW * 0.96, baseFrontBotY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = CN_OL;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  // Vertical front-leg strapping (3 dark iron bands, evenly spaced)
+  ctx.fillStyle = CN_IRON_LO;
+  for (const xOff of [-0.55, 0.0, 0.55]) {
+    const sx0 = gx + halfW * xOff - sc * 0.025;
+    rr(ctx, sx0, baseTopFrontY - sc * 0.02, sc * 0.05, baseFrontBotY - baseTopFrontY + sc * 0.04, sc * 0.01);
+    ctx.fill();
+  }
+
+  // Team-colored iron plate on the centre of the front face (the small dark
+  // square in the reference; team-tinted so sides are identifiable from above).
+  const plateW = sc * 0.34, plateH = sc * 0.20;
+  const plateY = (baseTopFrontY + baseFrontBotY) * 0.5 - plateH * 0.5;
+  ctx.fillStyle = teamDim;
+  rr(ctx, gx - plateW / 2, plateY, plateW, plateH, sc * 0.025);
+  ctx.fill();
+  ctx.strokeStyle = CN_OL;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  // rivet quartet
+  ctx.fillStyle = CN_IRON_HI;
+  for (const [dx, dy] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
+    ctx.beginPath();
+    ctx.arc(gx + dx * plateW * 0.36, plateY + (dy > 0 ? plateH * 0.75 : plateH * 0.25), sc * 0.022, 0, TAU);
+    ctx.fill();
+  }
+  // bright team emblem dot
+  ctx.fillStyle = teamCol;
+  ctx.beginPath();
+  ctx.arc(gx, plateY + plateH / 2, sc * 0.05, 0, TAU);
+  ctx.fill();
+
+  // ── 4. mortar barrel — ROTATES to aim, short & fat, 2.5D top-down view ──
+  // The barrel lies on the saddle, rotating around (pivotX, pivotY). The
+  // ctx.scale(1, persp) below applies the same Y-squish as the base so a
+  // barrel pointing toward/away from the camera looks foreshortened.
+  ctx.save();
+  ctx.translate(pivotX, pivotY);
+  ctx.rotate(a.aimAng);
+  ctx.scale(1, persp);
+  // Recoil pulls back along the LOCAL -x axis (away from muzzle).
+  ctx.translate(-recoil * sc * 0.10, 0);
+
+  // SHORT FAT mortar — body width DOUBLED (was 0.40 → 0.80 half-thickness).
+  const barL  = sc * 1.00;     // overall barrel length (in world)
+  const barR  = sc * 0.80;     // body half-thickness (2× wider than before)
+  const xBack = -sc * 0.30;
+  const xFront = xBack + barL;
+  const flareW = sc * 0.16;
+  const flareR = barR + sc * 0.08;
+
+  // Drop shadow under the barrel (offset down + right in screen, so in
+  // local-frame coords after rotate+scale, just nudge along +y).
+  ctx.fillStyle = 'rgba(0,0,0,0.30)';
+  rr(ctx, xBack + sc * 0.04, -barR + sc * 0.10, barL, barR * 2, barR * 0.45);
+  ctx.fill();
+
+  // Barrel body — gradient from light top to dark bottom (sun from above)
+  const bg = ctx.createLinearGradient(0, -barR, 0, barR);
+  bg.addColorStop(0.00, CN_IRON_HI);
+  bg.addColorStop(0.30, CN_IRON);
+  bg.addColorStop(1.00, CN_IRON_LO);
+  ctx.fillStyle = bg;
+  rr(ctx, xBack, -barR, barL, barR * 2, barR * 0.45);
+  ctx.fill();
+  ctx.strokeStyle = CN_OL;
+  ctx.lineWidth = 2.0;
+  rr(ctx, xBack, -barR, barL, barR * 2, barR * 0.45);
+  ctx.stroke();
+
+  // Two brass reinforcing rings — mortars have a beefy, banded look.
+  for (const fr of [0.30, 0.75]) {
+    const cxR = xBack + barL * fr;
+    const wRing = sc * 0.09;
+    const ringG = ctx.createLinearGradient(0, -barR, 0, barR);
+    ringG.addColorStop(0.00, CN_BRASS_HI);
+    ringG.addColorStop(0.55, CN_BRASS);
+    ringG.addColorStop(1.00, CN_BRASS_LO);
+    ctx.fillStyle = ringG;
+    rr(ctx, cxR - wRing / 2, -barR - sc * 0.018, wRing, barR * 2 + sc * 0.036, sc * 0.02);
+    ctx.fill();
+    ctx.strokeStyle = CN_OL;
+    ctx.lineWidth = 1.0;
+    ctx.stroke();
+  }
+
+  // Muzzle flare collar — wide brass lip at the front of the barrel.
+  const muzzleGr = ctx.createLinearGradient(0, -flareR, 0, flareR);
+  muzzleGr.addColorStop(0.0, CN_BRASS_HI);
+  muzzleGr.addColorStop(0.5, CN_BRASS);
+  muzzleGr.addColorStop(1.0, CN_BRASS_LO);
+  ctx.fillStyle = muzzleGr;
+  rr(ctx, xFront - flareW, -flareR, flareW, flareR * 2, sc * 0.04);
+  ctx.fill();
+  ctx.strokeStyle = CN_OL;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  // Dark bore (the muzzle hole) — drawn as an ellipse just inside the lip.
+  ctx.fillStyle = CN_BLACK;
+  ctx.beginPath();
+  ctx.ellipse(xFront - flareW * 0.40, 0, sc * 0.12, barR * 0.78, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(80,80,80,0.6)`;
+  ctx.lineWidth = 1.0;
+  ctx.stroke();
+  // Muzzle inner glow when firing
+  if (muzzleFlash > 0) {
+    const fG = ctx.createRadialGradient(
+      xFront - flareW * 0.40, 0, sc * 0.01,
+      xFront - flareW * 0.40, 0, sc * 0.30
+    );
+    fG.addColorStop(0, `rgba(255,255,235,${0.95 * muzzleFlash})`);
+    fG.addColorStop(0.5, `rgba(255,180,40,${0.75 * muzzleFlash})`);
+    fG.addColorStop(1, `rgba(255,80,0,0)`);
+    ctx.fillStyle = fG;
+    ctx.beginPath();
+    ctx.arc(xFront - flareW * 0.40, 0, sc * 0.30, 0, TAU);
+    ctx.fill();
+  }
+
+  // Trunnion cap — small brass disc at the barrel's pivot point on top of
+  // the carriage (visible especially when barrel rotates sideways).
+  ctx.fillStyle = CN_BRASS;
+  ctx.beginPath();
+  ctx.arc(xBack + sc * 0.18, 0, sc * 0.10, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = CN_OL;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.fillStyle = CN_BRASS_HI;
+  ctx.beginPath();
+  ctx.arc(xBack + sc * 0.18 - sc * 0.025, -sc * 0.025, sc * 0.035, 0, TAU);
+  ctx.fill();
+
+  // Brushed-metal top highlight along the upper edge of the barrel
+  ctx.strokeStyle = `rgba(255,255,255,0.50)`;
+  ctx.lineWidth = sc * 0.04;
+  ctx.beginPath();
+  ctx.moveTo(xBack + sc * 0.06, -barR + sc * 0.05);
+  ctx.lineTo(xFront - flareW - sc * 0.06, -barR + sc * 0.05);
+  ctx.stroke();
+
+  // Muzzle flash burst (additive) — bursts forward of the bore.
+  if (muzzleFlash > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const flashX = xFront + sc * 0.04;
+    const flashRad = sc * 0.50 * muzzleFlash;
+    const rg = ctx.createRadialGradient(flashX, 0, sc * 0.02, flashX, 0, flashRad);
+    rg.addColorStop(0.0, `rgba(255,255,230,${0.95 * muzzleFlash})`);
+    rg.addColorStop(0.3, `rgba(255,200,90,${0.80 * muzzleFlash})`);
+    rg.addColorStop(0.7, `rgba(255,110,20,${0.45 * muzzleFlash})`);
+    rg.addColorStop(1.0, `rgba(255,40,0,0)`);
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(flashX, 0, flashRad, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,220,${0.85 * muzzleFlash})`;
+    ctx.lineWidth = sc * 0.06 * muzzleFlash;
+    for (const ang of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      const len = sc * (ang === 0 ? 0.70 : 0.40) * muzzleFlash;
+      ctx.beginPath();
+      ctx.moveTo(flashX, 0);
+      ctx.lineTo(flashX + Math.cos(ang) * len, Math.sin(ang) * len);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Record muzzle-tip in local coords; we convert to world after restore.
+  if (a._wantPuff) {
+    a._puffWantX = xFront + sc * 0.08;
+    a._puffWantY = 0;
+  }
+
+  ctx.restore(); // end barrel rotation + perspective
+
+  // ── world-space smoke puffs (drift away from muzzle in aim direction) ───
+  if (a._wantPuff) {
+    const lx = a._puffWantX;
+    const ly = a._puffWantY;
+    const cos = Math.cos(a.aimAng), sn = Math.sin(a.aimAng);
+    const wx = pivotX + lx * cos - ly * persp * sn;
+    const wy = pivotY + lx * sn + ly * persp * cos;
+    for (let i = 0; i < a._wantPuff; i++) {
+      const jitter = (Math.random() - 0.5) * 0.18;
+      const dirAng = a.aimAng + jitter;
+      a.smoke.push({
+        x: wx,
+        y: wy,
+        vx: Math.cos(dirAng) * (sc * 0.50 + Math.random() * sc * 0.30),
+        vy: Math.sin(dirAng) * (sc * 0.50 + Math.random() * sc * 0.30) - sc * 0.20,
+        r0: sc * (0.22 + Math.random() * 0.10),
+        age: 0,
+        life: 0.55 + Math.random() * 0.25,
+      });
+    }
+    a._wantPuff = 0;
+  }
+  for (let i = a.smoke.length - 1; i >= 0; i--) {
+    const sm = a.smoke[i];
+    sm.age += dtReal;
+    if (sm.age >= sm.life) { a.smoke.splice(i, 1); continue; }
+    const f = sm.age / sm.life;
+    sm.x += sm.vx * dtReal * (1 - f * 0.5);
+    sm.y += sm.vy * dtReal * (1 - f * 0.7) - dtReal * sc * 0.55;
+    const r = sm.r0 * (1 + f * 1.8);
+    const alpha = (1 - f) * 0.55;
+    ctx.fillStyle = `rgba(200,200,200,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(sm.x, sm.y, r, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,255,255,${alpha * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(sm.x - r * 0.25, sm.y - r * 0.25, r * 0.45, 0, TAU);
+    ctx.fill();
+  }
+
+  // ── lifetime amber wash (last 6 s) ───────────────────────────────────────
+  if (lifeFade > 0) {
+    ctx.fillStyle = `rgba(255,140,40,${0.18 * lifeFade})`;
+    ctx.beginPath();
+    ctx.ellipse(gx, pivotY, halfW * 0.95, halfW * 0.95 * persp + sc * 0.30, 0, 0, TAU);
+    ctx.fill();
+  }
+
+  // ── hit flash overlay ────────────────────────────────────────────────────
+  if (a.flashT > 0) {
+    const f = a.flashT / FLASH;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(255,240,210,${0.55 * f})`;
+    ctx.beginPath();
+    ctx.ellipse(gx, pivotY, halfW * 0.95, halfW * 0.95 * persp + sc * 0.30, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore(); // global alpha / spawn fade
+}
+
+// Flag the rig as "Cannon" so sweepAnim() can generate a Cannon-flavoured
+// poof (rubble chunks + smoke) when the unit dies or its lifetime expires.
+export function markCannon(id) {
+  const a = cannonRig.get(id);
+  if (a) a.wasCannon = true;
+}
+
+// Cannonball projectile — drawn in renderer.js for p.src.card === 'Cannon'.
+// A dark iron sphere with a brass-gold rim catch, motion-blur streak behind,
+// and a faint smoke trail. (`ang` is the screen-space travel angle.)
+export function drawCannonball(ctx, x, y, ang, tile, opts = {}) {
+  const r = tile * 0.20;
+  const c = Math.cos(ang), s = Math.sin(ang);
+
+  // Smoke trail (3 puffs receding behind the ball)
+  for (let i = 1; i <= 3; i++) {
+    const bx = x - c * r * (1.0 + i * 0.85);
+    const by = y - s * r * (1.0 + i * 0.85);
+    const br = r * (0.85 + i * 0.20);
+    const a = 0.32 - i * 0.085;
+    ctx.fillStyle = `rgba(160,160,160,${a})`;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, TAU);
+    ctx.fill();
+  }
+
+  // Motion-blur streak — short trail behind the ball
+  if (opts.motion !== false) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    const grad = ctx.createLinearGradient(-r * 2.0, 0, 0, 0);
+    grad.addColorStop(0.0, 'rgba(80,80,80,0)');
+    grad.addColorStop(1.0, 'rgba(40,40,40,0.55)');
+    ctx.fillStyle = grad;
+    rr(ctx, -r * 2.0, -r * 0.45, r * 2.0, r * 0.90, r * 0.45);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Iron ball body with light from upper-left.
+  const bg = ctx.createRadialGradient(
+    x - r * 0.35, y - r * 0.35, r * 0.05,
+    x, y, r
+  );
+  bg.addColorStop(0.0, '#8a8e96');
+  bg.addColorStop(0.5, '#3a3f48');
+  bg.addColorStop(1.0, '#0e1116');
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Bright specular catchlight (upper-left)
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.40, y - r * 0.40, r * 0.18, 0, TAU);
+  ctx.fill();
+
+  // Brass-gold leading edge (additive) — sells "freshly fired hot shot"
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const lead = ctx.createRadialGradient(
+    x + c * r * 0.7, y + s * r * 0.7, r * 0.05,
+    x + c * r * 0.7, y + s * r * 0.7, r * 0.55
+  );
+  lead.addColorStop(0.0, 'rgba(255,210,120,0.85)');
+  lead.addColorStop(0.6, 'rgba(255,140,30,0.40)');
+  lead.addColorStop(1.0, 'rgba(255,80,0,0)');
+  ctx.fillStyle = lead;
+  ctx.beginPath();
+  ctx.arc(x + c * r * 0.7, y + s * r * 0.7, r * 0.55, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
 // ── Princess & King Towers ───────────────────────────────────────────────────
-// Stone castle towers, single dispatch on t.kind. Same visual language for
-// both types; the king is bigger, has 4 corner mini-turrets and a taller
-// banner pole. Everything that varies per tower (stone-block tint, banner
-// flutter phase, crack paths, rubble layout) is hash-derived from t.id so
-// the look is stable across frames without any persistent rig state.
+// Square stone keeps drawn in 2.5D (same perspective convention as the cannon
+// — back narrower & higher than front so the flat square roof renders as a
+// trapezoid). A rectangular front wall sits under the roof's front edge;
+// crenellated parapet walls ring all four roof edges with taller corner
+// turrets at the four corners. A central stone brazier on the roof carries
+// the activated-state flame (replaces the old open-chamber glow). Single
+// dispatch on t.kind: the king is bigger, has gold conical spires on its
+// corner turrets and a taller banner pole.
+// Everything that varies per tower (stone-block tint, banner flutter phase,
+// crack paths, rubble layout) is hash-derived from t.id so the look is
+// stable across frames without any persistent rig state.
 //
 // State branches:
 //   !t.alive            -> rubble pile (broken chunks, smoke, snapped pole,
 //                          torn flag draped over the heap)
-//   alive && activated  -> bright stonework, lanterns glow (additive), gold
-//                          rune ring + pulsing halo at the base, banner
-//                          flutters at full amplitude
+//   alive && activated  -> bright stonework, brazier burning + warm bloom,
+//                          lanterns glow (additive), gold rune ring +
+//                          pulsing halo at the base, banner flutters at
+//                          full amplitude
 //   alive && !activated -> dim/desaturated (king only — princess is always
-//                          activated by the engine), lanterns dark, weak
-//                          banner flutter, drifting "Zz" sleepy marker
+//                          activated by the engine), brazier cold (ashes),
+//                          lanterns dark, weak banner flutter, drifting
+//                          "Zz" sleepy marker
 //
-// HP-driven cracks: under 50% HP small cracks appear, under 20% they grow
-// and tiny rubble bits tumble down the front face.
+// HP-driven cracks: under 50% HP small cracks appear on the front wall;
+// under 20% they grow and tiny rubble bits tumble down the front face.
 //
 // `opts` accepts { team, dim } — the renderer passes the bound team-colour
 // pair; we fall back to the COL constants if not supplied.
@@ -9388,82 +10575,106 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     return;
   }
 
-  // ── ALIVE STATE ──────────────────────────────────────────────────────
+  // ── ALIVE STATE (2.5D: square keep, flat roof, crenellated parapets) ────
   const activated = !!t.activated;
   const hpFrac    = clamp01(t.hp / t.maxHp);
-  // Which side of the tower is facing the camera?
-  //   Player 0 = bottom team: their towers face up (toward the enemy field),
-  //     so the camera (at the south) sees the BACK — no door, plain stone.
-  //   Player 1 = top team: their towers face down (toward the camera),
-  //     so the camera sees the FRONT — door, lanterns, gold trim arch.
+  // Which side faces the camera? P0 towers face up (away from camera, BACK
+  // visible), P1 towers face down (FRONT visible — door + lanterns + arch).
   const showsFront = t.owner === 1;
 
-  // 2.5D ground cast shadow at the base (full alpha even when dormant).
+  // 2.5D SQUARE-KEEP LAYOUT
+  // The tower is a square stone keep with a FLAT roof, viewed from above-
+  // front — same perspective convention as the other 2.5D sprites (cannon):
+  // the back edge of the square roof is narrower and higher than the front,
+  // so the roof renders as a trapezoid. The wall body is a rectangular front
+  // face under the front edge; crenellated parapet walls ring all four edges
+  // of the roof, with taller corner turrets at the four corners.
+  //
+  // Vertical landmarks (smaller y = higher on screen = farther into scene):
+  //   roofBackY  : back edge of roof (deepest into scene)
+  //   roofFrontY : front edge of roof = top of front wall face (= wallTop)
+  //   wallBot    : bottom of wall (ground line, = y1)
+  const persp      = 0.50;                              // back-corner Y-offset / halfW
+  const halfW      = W * (isKing ? 0.46 : 0.44);        // front face half-width
+  const halfWback  = halfW * 0.78;                      // back narrower (perspective)
+  const backDY     = halfW * persp;                     // back-edge Y-offset
+  const wallTop    = y0 + H * 0.55;                     // top of front wall face
+  const roofFrontY = wallTop;                           // front edge of roof
+  const roofBackY  = roofFrontY - backDY;               // back edge of roof
+  const wallBot    = y1;
+  const wallLeftX  = cx - halfW;
+  const wallW      = halfW * 2;
+  const bodyH      = wallBot - wallTop;
+  // Roof corners (square in world → trapezoid in screen)
+  const FLx = wallLeftX,        FLy = roofFrontY;
+  const FRx = cx + halfW,       FRy = roofFrontY;
+  const BLx = cx - halfWback,   BLy = roofBackY;
+  const BRx = cx + halfWback,   BRy = roofBackY;
+  // Parapet / crenellation sizing
+  const merlonH    = H * 0.10;
+  const merlonW    = W * (isKing ? 0.085 : 0.095);
+  const lowWallH   = merlonH * 0.50;
+  const turretW    = W * (isKing ? 0.11 : 0.095);
+  const turretH    = merlonH * (isKing ? 2.05 : 1.55);
+
+  // Ground cast shadow at the tower's base
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.beginPath();
-  ctx.ellipse(cx + W * 0.05, y1 + 2, W * 0.60, H * 0.18, 0, 0, TAU);
+  ctx.ellipse(cx + W * 0.04, y1 + 2, halfW * 1.08, halfW * 0.36, 0, 0, TAU);
   ctx.fill();
 
-  // Activated state gets a gold rune ring + pulsing halo at the base,
-  // drawn BEFORE the body so the tower sits on top of it.
+  // Activated rune ring at the base
   if (activated) {
-    _drawTowerRuneRing(ctx, cx + W * 0.05, y1 + 2, W, T, id, teamRgb);
+    _drawTowerRuneRing(ctx, cx + W * 0.04, y1 + 2, W, T, id, teamRgb);
   }
 
-  // Wrap the rest of the tower so we can apply a dormant-state desaturation
-  // (lower alpha + cooler tone) without affecting the shadow / rune ring.
+  // Wrap the rest so dormant state can desaturate without touching shadow/ring
   ctx.save();
   if (!activated) ctx.globalAlpha = 0.82;
 
-  // Body layout — keep a strip at the top of the bounding box for the
-  // crenellations + corner turrets so the silhouette fits neatly inside the
-  // size×size box the engine reserves.
-  const bodyTop = y0 + H * (isKing ? 0.18 : 0.16);
-  const bodyH   = y1 - bodyTop;
-
-  // Front face base fill.
+  // ── 1. WALL FRONT FACE ─────────────────────────────────────────────────
   ctx.fillStyle = LIGHT;
-  ctx.fillRect(x0, bodyTop, W, bodyH);
+  ctx.fillRect(wallLeftX, wallTop, wallW, bodyH);
 
-  // Vertical highlight strip on the left (sells the light-from-upper-left).
+  // Lit highlight strip on the left
   {
-    const g = ctx.createLinearGradient(x0, bodyTop, x0 + W * 0.22, bodyTop);
+    const g = ctx.createLinearGradient(wallLeftX, wallTop, wallLeftX + wallW * 0.24, wallTop);
     g.addColorStop(0, 'rgba(255,255,255,0.42)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
-    ctx.fillRect(x0, bodyTop, W * 0.22, bodyH);
+    ctx.fillRect(wallLeftX, wallTop, wallW * 0.24, bodyH);
   }
-  // Implied side-bevel shadow on the right.
+  // Side-bevel shadow on the right (sells the boxy depth of the front face)
   {
-    const g = ctx.createLinearGradient(x1 - W * 0.24, bodyTop, x1, bodyTop);
+    const g = ctx.createLinearGradient(wallLeftX + wallW * 0.70, wallTop, wallLeftX + wallW, wallTop);
     g.addColorStop(0, 'rgba(20,33,61,0)');
-    g.addColorStop(1, 'rgba(20,33,61,0.58)');
+    g.addColorStop(1, 'rgba(20,33,61,0.62)');
     ctx.fillStyle = g;
-    ctx.fillRect(x1 - W * 0.24, bodyTop, W * 0.24, bodyH);
+    ctx.fillRect(wallLeftX + wallW * 0.70, wallTop, wallW * 0.30, bodyH);
   }
-  // Bottom contact shadow (where tower meets the ground).
+  // Ground contact shadow at the wall's bottom
   {
-    const g = ctx.createLinearGradient(x0, y1 - H * 0.20, x0, y1);
+    const g = ctx.createLinearGradient(wallLeftX, wallBot - H * 0.18, wallLeftX, wallBot);
     g.addColorStop(0, 'rgba(20,33,61,0)');
     g.addColorStop(1, 'rgba(20,33,61,0.60)');
     ctx.fillStyle = g;
-    ctx.fillRect(x0, y1 - H * 0.20, W, H * 0.20);
+    ctx.fillRect(wallLeftX, wallBot - H * 0.18, wallW, H * 0.18);
   }
 
-  // ── Stone block grid texture (brick-stagger, per-block tint hash) ──
+  // Stone block grid (brick-stagger, per-block hashed tint)
   const cols = isKing ? 4 : 3;
-  const rows = isKing ? 5 : 4;
-  const bw   = W / cols;
+  const rows = isKing ? 4 : 3;
+  const bw   = wallW / cols;
   const bh   = bodyH / rows;
   ctx.lineWidth = 1;
   ctx.strokeStyle = 'rgba(0,0,0,0.40)';
   for (let r = 0; r < rows; r++) {
     for (let c = -1; c <= cols; c++) {
       const stagger = (r % 2) * bw * 0.5;
-      const bx = x0 + c * bw - stagger;
-      const by = bodyTop + r * bh;
-      const left  = Math.max(bx, x0);
-      const right = Math.min(bx + bw, x1);
+      const bx = wallLeftX + c * bw - stagger;
+      const by = wallTop + r * bh;
+      const left  = Math.max(bx, wallLeftX);
+      const right = Math.min(bx + bw, wallLeftX + wallW);
       const cw    = right - left;
       if (cw <= 0) continue;
       const tint = rand(r * 31 + (c + 7) * 13) - 0.5;
@@ -9472,11 +10683,10 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
         ? `rgba(229,229,229,${a + 0.08})`
         : `rgba(20,33,61,${a + 0.04})`;
       ctx.fillRect(left, by, cw, bh);
-      // mortar — top edge + right edge of each visible cell
       ctx.beginPath();
       ctx.moveTo(left, by);
       ctx.lineTo(right, by);
-      if (bx + bw <= x1 + 0.5) {
+      if (bx + bw <= wallLeftX + wallW + 0.5) {
         ctx.moveTo(bx + bw, by);
         ctx.lineTo(bx + bw, by + bh);
       }
@@ -9484,25 +10694,23 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     }
   }
 
-  // Body outline.
+  // Wall outline
   ctx.strokeStyle = BLACK;
   ctx.lineWidth = 2.2;
-  ctx.strokeRect(x0, bodyTop, W, bodyH);
+  ctx.strokeRect(wallLeftX, wallTop, wallW, bodyH);
 
-  // ── Gold trim band (just below the crenellations) ──
-  const trimY = bodyTop + bh * 0.42;
-  const trimH = Math.max(5, bh * 0.46);
+  // Gold trim band wraps the wall just below the rim
+  const trimY = wallTop + bh * 0.20;
+  const trimH = Math.max(5, bh * 0.40);
   ctx.fillStyle = GOLDC;
-  ctx.fillRect(x0, trimY, W, trimH);
-  // top edge highlight + bottom-edge shadow
+  ctx.fillRect(wallLeftX, trimY, wallW, trimH);
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.fillRect(x0, trimY, W, Math.max(1, trimH * 0.20));
+  ctx.fillRect(wallLeftX, trimY, wallW, Math.max(1, trimH * 0.20));
   ctx.fillStyle = 'rgba(156,107,9,0.70)';
-  ctx.fillRect(x0, trimY + trimH - Math.max(1, trimH * 0.22), W, Math.max(1, trimH * 0.22));
-  // gold rivets along the band
+  ctx.fillRect(wallLeftX, trimY + trimH - Math.max(1, trimH * 0.22), wallW, Math.max(1, trimH * 0.22));
   const riv = cols + 2;
   for (let i = 0; i < riv; i++) {
-    const rx = x0 + (i + 0.5) * (W / riv);
+    const rx = wallLeftX + (i + 0.5) * (wallW / riv);
     ctx.fillStyle = WHITE;
     ctx.beginPath();
     ctx.arc(rx, trimY + trimH * 0.5, Math.max(1.4, trimH * 0.20), 0, TAU);
@@ -9514,19 +10722,15 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   }
   ctx.strokeStyle = BLACK;
   ctx.lineWidth = 1.4;
-  ctx.strokeRect(x0, trimY, W, trimH);
+  ctx.strokeRect(wallLeftX, trimY, wallW, trimH);
 
-  // ── Door + arrow slit on the front face ──
-  // Geometry is computed for both faces so the lantern positions (below) can
-  // reuse doorX/doorW even on the back, but only the FRONT face actually
-  // draws the door cavity. The back face shows solid stone + arrow slits.
-  const doorW = W * (isKing ? 0.22 : 0.24);
-  const doorH = bodyH * (isKing ? 0.48 : 0.52);
+  // Door (front face) or arrow slits (back face)
+  const doorW = wallW * (isKing ? 0.22 : 0.24);
+  const doorH = bodyH * (isKing ? 0.52 : 0.58);
   const doorX = cx - doorW / 2;
-  const doorY = y1 - doorH - bh * 0.20;
+  const doorY = wallBot - doorH - bh * 0.18;
   const fr    = Math.max(2, W * 0.024);
   if (showsFront) {
-    // gold trim arch frame
     ctx.fillStyle = GOLDC;
     ctx.beginPath();
     ctx.moveTo(doorX - fr, doorY + doorW / 2);
@@ -9537,7 +10741,6 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = BLACK; ctx.lineWidth = 1.4; ctx.stroke();
-    // dark navy door interior
     ctx.fillStyle = NAVYC;
     ctx.beginPath();
     ctx.moveTo(doorX, doorY + doorW / 2);
@@ -9547,7 +10750,6 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.arc(doorX + doorW / 2, doorY + doorW / 2, doorW / 2, 0, Math.PI, true);
     ctx.closePath();
     ctx.fill();
-    // gold rivets on the frame (three down each side)
     ctx.fillStyle = GOLDC;
     for (let i = 0; i < 3; i++) {
       const ry = doorY + doorH - (i + 0.5) * (doorH / 3);
@@ -9558,10 +10760,8 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
       ctx.arc(doorX + doorW + fr * 0.4, ry, fr * 0.45, 0, TAU);
       ctx.fill();
     }
-    // central tall arrow slit (black) inside the door cavity
     ctx.fillStyle = BLACK;
     ctx.fillRect(cx - doorW * 0.06, doorY + doorH * 0.20, doorW * 0.12, doorH * 0.55);
-    // activated: warm light pouring out the door (additive bloom)
     if (activated) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -9580,16 +10780,12 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
       ctx.restore();
     }
   } else {
-    // BACK FACE: no door. Three tall arrow slits (windows) high on the wall.
-    // When activated, warm light spills out of each slit — same pulse rhythm
-    // as the front-face door bloom so both towers feel "awake" together.
-    const slitH = bodyH * (isKing ? 0.32 : 0.34);
+    // BACK FACE: 3 tall arrow slits high on the wall
+    const slitH = bodyH * (isKing ? 0.40 : 0.44);
     const slitW = Math.max(2, W * 0.035);
-    const slitY = doorY + doorH * 0.12;
-    const slitPositions = [-1, 0, 1];
-    for (const k of slitPositions) {
-      const sxK = cx + k * W * (isKing ? 0.20 : 0.22);
-      // recessed gold-edged frame
+    const slitY = doorY + doorH * 0.10;
+    for (const k of [-1, 0, 1]) {
+      const sxK = cx + k * wallW * (isKing ? 0.22 : 0.24);
       ctx.fillStyle = GOLDC;
       ctx.fillRect(sxK - slitW * 0.9, slitY - 1, slitW * 1.8, slitH + 2);
       ctx.strokeStyle = BLACK; ctx.lineWidth = 1; ctx.strokeRect(
@@ -9607,8 +10803,8 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
           sxK, slitY + slitH * 0.50, 0,
           sxK, slitY + slitH * 0.50, slitW * 4
         );
-        lg.addColorStop(0,   `rgba(252,163,17,${0.55 * pulse})`);
-        lg.addColorStop(1,   'rgba(252,163,17,0)');
+        lg.addColorStop(0, `rgba(252,163,17,${0.55 * pulse})`);
+        lg.addColorStop(1, 'rgba(252,163,17,0)');
         ctx.fillStyle = lg;
         ctx.beginPath();
         ctx.ellipse(sxK, slitY + slitH * 0.55, slitW * 3.5, slitH * 0.60, 0, 0, TAU);
@@ -9618,15 +10814,15 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     }
   }
 
-  // ── HP-driven cracks (50% threshold for small, 20% for big + rubble) ──
+  // HP-driven cracks across the wall (at <50% HP)
   if (hpFrac < 0.5) {
-    const sev    = 1 - hpFrac / 0.5;
-    const nCk    = Math.floor(2 + sev * 4);
+    const sev  = 1 - hpFrac / 0.5;
+    const nCk  = Math.floor(2 + sev * 4);
     ctx.strokeStyle = `rgba(0,0,0,${0.55 + sev * 0.35})`;
     ctx.lineWidth = 1 + sev * 1.2;
     for (let i = 0; i < nCk; i++) {
-      const sxp = x0 + W * (0.12 + rand(800 + i) * 0.76);
-      const syp = bodyTop + bodyH * (0.10 + rand(900 + i) * 0.55);
+      const sxp = wallLeftX + wallW * (0.12 + rand(800 + i) * 0.76);
+      const syp = wallTop + bodyH * (0.10 + rand(900 + i) * 0.55);
       ctx.beginPath();
       ctx.moveTo(sxp, syp);
       let px2 = sxp, py2 = syp;
@@ -9634,120 +10830,356 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
       for (let k = 0; k < segs; k++) {
         const da  = (rand(1000 + i * 11 + k) - 0.5) * 1.2;
         const len = W * (0.06 + rand(1100 + i * 11 + k) * 0.12);
-        const ang = Math.PI * 0.5 + da; // mostly downward
+        const ang = Math.PI * 0.5 + da;
         px2 += Math.cos(ang) * len;
         py2 += Math.sin(ang) * len;
         ctx.lineTo(px2, py2);
       }
       ctx.stroke();
     }
-    // critical HP: small dark rubble bits tumbling down the front face
     if (hpFrac < 0.2) {
       ctx.fillStyle = NAVYC;
-      const nBits = 5;
-      for (let i = 0; i < nBits; i++) {
-        const ph    = rand(1200 + i);
-        const fall  = ((T * 0.55 + ph) % 1);
-        const bx2   = x0 + W * (0.15 + rand(1300 + i) * 0.70);
-        const by2   = bodyTop + bodyH * (0.20 + fall * 0.70);
-        const s     = 2 + rand(1400 + i) * 2;
+      for (let i = 0; i < 5; i++) {
+        const ph   = rand(1200 + i);
+        const fall = ((T * 0.55 + ph) % 1);
+        const bx2  = wallLeftX + wallW * (0.15 + rand(1300 + i) * 0.70);
+        const by2  = wallTop + bodyH * (0.20 + fall * 0.70);
+        const s    = 2 + rand(1400 + i) * 2;
         ctx.fillRect(bx2 - s / 2, by2 - s / 2, s, s);
       }
     }
   }
 
-  // ── 2.5D wall-top rim: a dark hollow-interior band drawn BEHIND the
-  // crenellations. The merlon gaps reveal this dark band, selling the
-  // illusion that the tower is volumetric rather than a flat 2D billboard.
-  const n    = isKing ? 4 : 3;
-  const slots = 2 * n + 1;        // alternating: filled gap filled gap ... filled
-  const cW   = W / slots;
-  const cTop = bodyTop - bh * 0.85;
-  const cH   = bh * 0.95;
-  // Rim spans the full merlon vertical region so the gaps reveal it.
-  const rimY0    = cTop;
-  const rimDepth = bodyTop - cTop;          // = bh * 0.85
-  const rimInset = W * 0.020;
-  // Dark recessed interior — much darker than the body.
-  ctx.fillStyle = '#0a142a';
-  ctx.fillRect(x0 + rimInset, rimY0, W - 2 * rimInset, rimDepth);
-  // Top edge catches light (top of the wall, visible from above); bottom
-  // recedes into deep shadow (back of the hollow chamber).
+  // ── 2. ROOF (flat square top, trapezoidal in screen) ───────────────────
+  // The four corners FL/FR/BR/BL define a square in world space; the camera
+  // tilt foreshortens the depth axis so on screen it's a trapezoid with the
+  // back narrower & higher than the front. Drawn AFTER the wall so the roof
+  // covers the wall's top edge — selling the "the wall has thickness" read.
+  ctx.fillStyle = LIGHT;
+  ctx.beginPath();
+  ctx.moveTo(FLx, FLy);
+  ctx.lineTo(FRx, FRy);
+  ctx.lineTo(BRx, BRy);
+  ctx.lineTo(BLx, BLy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sun-lit gradient on the roof: brighter near the back (sun from above-back).
   {
-    const g = ctx.createLinearGradient(x0, rimY0, x0, bodyTop);
-    g.addColorStop(0, 'rgba(255,255,255,0.18)');
-    g.addColorStop(0.35, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.65)');
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(FLx, FLy);
+    ctx.lineTo(FRx, FRy);
+    ctx.lineTo(BRx, BRy);
+    ctx.lineTo(BLx, BLy);
+    ctx.closePath();
+    ctx.clip();
+    const g = ctx.createLinearGradient(cx, roofBackY, cx, roofFrontY);
+    g.addColorStop(0.0, 'rgba(255,255,255,0.32)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.08)');
+    g.addColorStop(1.0, 'rgba(20,33,61,0.20)');
     ctx.fillStyle = g;
-    ctx.fillRect(x0 + rimInset, rimY0, W - 2 * rimInset, rimDepth);
+    ctx.fillRect(FLx - 2, roofBackY - 1, wallW + 4, backDY + 2);
+    ctx.restore();
   }
-  // Back-facing tower: highlight the inside walkway behind the merlons more
-  // strongly (camera angled down into the tower's open crown) and add the
-  // warm activated glow rising from the king's chamber.
-  if (!showsFront) {
-    ctx.fillStyle = 'rgba(229,229,229,0.26)';
-    ctx.fillRect(x0 + rimInset, rimY0 + rimDepth * 0.18, W - 2 * rimInset, rimDepth * 0.32);
-    if (activated) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      const pulse = 0.78 + Math.sin(T * 4 + id) * 0.22;
-      ctx.fillStyle = `rgba(252,163,17,${0.32 * pulse})`;
-      ctx.fillRect(x0 + rimInset, rimY0 + rimDepth * 0.45, W - 2 * rimInset, rimDepth * 0.55);
-      ctx.restore();
+
+  // Flagstone mortar grid in perspective: row lines parallel to front edge,
+  // column lines converging from front to back. Clipped to the roof quad so
+  // strokes don't bleed past the parapet boundary.
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(FLx, FLy);
+  ctx.lineTo(FRx, FRy);
+  ctx.lineTo(BRx, BRy);
+  ctx.lineTo(BLx, BLy);
+  ctx.closePath();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.34)';
+  ctx.lineWidth = 1.0;
+  const nRowsRoof = isKing ? 4 : 3;
+  for (let r = 1; r < nRowsRoof; r++) {
+    const u  = r / nRowsRoof;
+    const lx = FLx * (1 - u) + BLx * u;
+    const rx = FRx * (1 - u) + BRx * u;
+    const ly = FLy * (1 - u) + BLy * u;
+    const ry = FRy * (1 - u) + BRy * u;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(rx, ry);
+    ctx.stroke();
+  }
+  const nColsRoof = isKing ? 4 : 3;
+  for (let c = 1; c < nColsRoof; c++) {
+    const u  = c / nColsRoof;
+    const fx = FLx * (1 - u) + FRx * u;
+    const bx = BLx * (1 - u) + BRx * u;
+    ctx.beginPath();
+    ctx.moveTo(fx, roofFrontY);
+    ctx.lineTo(bx, roofBackY);
+    ctx.stroke();
+  }
+  // Per-flagstone hashed tint (subtle, locked by tower id)
+  for (let r = 0; r < nRowsRoof; r++) {
+    for (let c = 0; c < nColsRoof; c++) {
+      const u0 = r / nRowsRoof, u1 = (r + 1) / nRowsRoof;
+      const v0 = c / nColsRoof, v1 = (c + 1) / nColsRoof;
+      // Average centre of the cell
+      const fxC = FLx * (1 - (v0 + v1) / 2) + FRx * ((v0 + v1) / 2);
+      const bxC = BLx * (1 - (v0 + v1) / 2) + BRx * ((v0 + v1) / 2);
+      const uM  = (u0 + u1) / 2;
+      const cxC = fxC * (1 - uM) + bxC * uM;
+      const cyC = roofFrontY * (1 - uM) + roofBackY * uM;
+      const tint = rand(r * 17 + c * 29 + 3) - 0.5;
+      const a    = Math.abs(tint) * 0.16;
+      ctx.fillStyle = tint > 0
+        ? `rgba(229,229,229,${a + 0.06})`
+        : `rgba(20,33,61,${a + 0.04})`;
+      ctx.beginPath();
+      ctx.arc(cxC, cyC, Math.min(wallW / nColsRoof, backDY / nRowsRoof) * 0.42, 0, TAU);
+      ctx.fill();
     }
   }
+  ctx.restore();
 
-  // ── Crenellations (alternating filled/gap blocks across the top) ──
-  // Drawn AFTER the rim so the merlons cover the rim where they sit, and
-  // the gaps between merlons reveal the dark hollow interior behind.
-  for (let i = 0; i < slots; i += 2) {
-    const cxL = x0 + i * cW;
-    ctx.fillStyle = LIGHT;
-    ctx.fillRect(cxL, cTop, cW, cH);
-    // navy shadow on the right side of each block
-    ctx.fillStyle = 'rgba(20,33,61,0.55)';
-    ctx.fillRect(cxL + cW * 0.75, cTop, cW * 0.25, cH);
-    // top-left specular
-    ctx.fillStyle = 'rgba(255,255,255,0.70)';
-    ctx.fillRect(cxL, cTop, cW * 0.50, Math.max(1, cH * 0.18));
-    ctx.strokeStyle = BLACK;
-    ctx.lineWidth = 1.6;
-    ctx.strokeRect(cxL, cTop, cW, cH);
-  }
+  // Roof outline (over the grid, so the perimeter reads cleanly)
+  ctx.strokeStyle = BLACK;
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  ctx.moveTo(FLx, FLy);
+  ctx.lineTo(FRx, FRy);
+  ctx.lineTo(BRx, BRy);
+  ctx.lineTo(BLx, BLy);
+  ctx.closePath();
+  ctx.stroke();
 
-  // ── King-only: 4 corner mini-turrets at the upper corners ──
-  // (Drawn AFTER crenellations so the corner turrets visually replace the
-  // outermost crenel blocks and read as taller stubby towers.)
-  let bannerTop = cTop;
-  if (isKing) {
-    const turS = W * 0.22;
-    const turY = bodyTop - turS * 1.10;
-    const turCorners = [
-      [x0 - turS * 0.18, turY], // back-left in 2.5D (also front from camera)
-      [x1 - turS * 0.82, turY], // back-right
-    ];
-    for (const [tx, ty] of turCorners) {
-      ctx.fillStyle = LIGHT;
-      ctx.fillRect(tx, ty, turS, turS * 1.30);
-      ctx.fillStyle = 'rgba(20,33,61,0.45)';
-      ctx.fillRect(tx + turS * 0.72, ty, turS * 0.28, turS * 1.30);
-      ctx.fillStyle = 'rgba(255,255,255,0.45)';
-      ctx.fillRect(tx, ty, turS * 0.18, turS * 1.30);
-      ctx.strokeStyle = BLACK;
-      ctx.lineWidth = 1.4;
-      ctx.strokeRect(tx, ty, turS, turS * 1.30);
-      // mini crenellations on top
-      for (let k = 0; k < 2; k++) {
-        const bxk = tx + (k * 0.55 + 0.05) * turS;
-        ctx.fillStyle = LIGHT;
-        ctx.fillRect(bxk, ty - turS * 0.22, turS * 0.40, turS * 0.22);
-        ctx.strokeStyle = BLACK;
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(bxk, ty - turS * 0.22, turS * 0.40, turS * 0.22);
+  // ── 3. ROOF CENTREPIECE: stone brazier ─────────────────────────────────
+  // Replaces the old open-chamber glow source. Sits at the centre of the
+  // roof; when activated it burns with warm flame + additive bloom. Drawn
+  // BEFORE the parapets so the (closer-to-camera) front parapet's merlons
+  // properly occlude the brazier's flame stem when they overlap.
+  const brR    = W * (isKing ? 0.11 : 0.10);
+  const brX    = cx;
+  const brY    = roofFrontY - backDY * 0.42;        // slight forward of centre
+  // base ring (darker stone, ellipse footprint)
+  ctx.fillStyle = NAVYC;
+  ctx.beginPath();
+  ctx.ellipse(brX, brY, brR, brR * 0.50, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = BLACK;
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  // light stone rim around the bowl mouth
+  ctx.fillStyle = LIGHT;
+  ctx.fillRect(brX - brR * 0.92, brY - brR * 0.46, brR * 1.84, brR * 0.20);
+  ctx.strokeStyle = BLACK;
+  ctx.lineWidth = 1.1;
+  ctx.strokeRect(brX - brR * 0.92, brY - brR * 0.46, brR * 1.84, brR * 0.20);
+  // gold band around the bowl
+  ctx.fillStyle = GOLDC;
+  ctx.fillRect(brX - brR * 0.92, brY - brR * 0.26, brR * 1.84, brR * 0.09);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillRect(brX - brR * 0.92, brY - brR * 0.26, brR * 1.84, Math.max(1, brR * 0.04));
+  if (activated) {
+    // inner ember pit
+    ctx.fillStyle = '#2a0a00';
+    ctx.beginPath();
+    ctx.ellipse(brX, brY - brR * 0.10, brR * 0.78, brR * 0.36, 0, 0, TAU);
+    ctx.fill();
+    // flame body (additive)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const flick = 0.85 + Math.sin(T * 7 + id) * 0.15;
+    ctx.fillStyle = `rgba(252,100,17,${0.88 * flick})`;
+    ctx.beginPath();
+    ctx.ellipse(brX, brY - brR * 0.70, brR * 0.68, brR * 0.90, 0, 0, TAU);
+    ctx.fill();
+    // hot inner core
+    ctx.fillStyle = `rgba(255,225,150,${0.92 * flick})`;
+    ctx.beginPath();
+    ctx.ellipse(brX, brY - brR * 0.56, brR * 0.34, brR * 0.58, 0, 0, TAU);
+    ctx.fill();
+    // outer bloom
+    const lg = ctx.createRadialGradient(brX, brY - brR * 0.4, 0, brX, brY - brR * 0.4, brR * 5);
+    lg.addColorStop(0,   `rgba(252,163,17,${0.55 * flick})`);
+    lg.addColorStop(0.5, `rgba(252,163,17,${0.22 * flick})`);
+    lg.addColorStop(1,   'rgba(252,163,17,0)');
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.arc(brX, brY - brR * 0.4, brR * 5, 0, TAU);
+    ctx.fill();
+    // a few hash-stable spark dots floating up
+    ctx.fillStyle = `rgba(255,210,120,${0.85 * flick})`;
+    for (let i = 0; i < 4; i++) {
+      const ph = rand(2000 + i);
+      const rise = ((T * 1.1 + ph) % 1);
+      const sx2 = brX + (rand(2100 + i) - 0.5) * brR * 1.4;
+      const sy2 = brY - brR * 0.5 - rise * brR * 2.2;
+      const ar  = 1.6 * (1 - rise);
+      if (ar > 0.2) {
+        ctx.beginPath();
+        ctx.arc(sx2, sy2, ar, 0, TAU);
+        ctx.fill();
       }
     }
-    bannerTop = turY - turS * 0.22;
+    ctx.restore();
+  } else {
+    // cold ashes when dormant
+    ctx.fillStyle = 'rgba(40,30,30,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(brX, brY - brR * 0.08, brR * 0.62, brR * 0.28, 0, 0, TAU);
+    ctx.fill();
   }
+
+  // ── 4. CRENELLATED PARAPETS along each roof edge ───────────────────────
+  // Each of the 4 roof edges gets a low continuous wall ribbon (the parapet
+  // walkway shield) with merlons (raised blocks) standing up from it at
+  // regular intervals. Crenel gaps between merlons reveal whatever is
+  // painted behind them (back parapet visible through front gaps, etc.).
+  // Painter order: BACK first (deepest), then sides, then FRONT (closest).
+  // Each merlon stands straight UP in screen space regardless of which
+  // edge it sits on — a minor cheat that reads cleanly at this scale.
+  const drawParapet = (sX, sY, eX, eY, mCount) => {
+    // 1) Low wall ribbon: a thin parallelogram lifted lowWallH upward from
+    //    the edge (top is parallel to the base edge, shifted up by lowWallH).
+    ctx.fillStyle = LIGHT;
+    ctx.beginPath();
+    ctx.moveTo(sX, sY);
+    ctx.lineTo(eX, eY);
+    ctx.lineTo(eX, eY - lowWallH);
+    ctx.lineTo(sX, sY - lowWallH);
+    ctx.closePath();
+    ctx.fill();
+    // top-light strip along the lit top edge of the ribbon
+    ctx.fillStyle = 'rgba(255,255,255,0.50)';
+    ctx.beginPath();
+    ctx.moveTo(sX, sY - lowWallH);
+    ctx.lineTo(eX, eY - lowWallH);
+    ctx.lineTo(eX, eY - lowWallH + Math.max(1, lowWallH * 0.22));
+    ctx.lineTo(sX, sY - lowWallH + Math.max(1, lowWallH * 0.22));
+    ctx.closePath();
+    ctx.fill();
+    // ribbon outline
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(sX, sY);
+    ctx.lineTo(eX, eY);
+    ctx.lineTo(eX, eY - lowWallH);
+    ctx.lineTo(sX, sY - lowWallH);
+    ctx.closePath();
+    ctx.stroke();
+    // 2) Merlons spaced along the edge (excluding the two ends, which the
+    //    corner turrets cover). Each merlon stands UP from the top of the
+    //    low wall ribbon (= edge - lowWallH).
+    for (let i = 1; i <= mCount; i++) {
+      const u  = i / (mCount + 1);
+      const bx = sX * (1 - u) + eX * u;
+      const by = sY * (1 - u) + eY * u - lowWallH;
+      const mW = merlonW;
+      const mH = merlonH;
+      // body
+      ctx.fillStyle = LIGHT;
+      ctx.fillRect(bx - mW * 0.5, by - mH, mW, mH);
+      // right shadow (consistent sun direction with the corner turrets)
+      ctx.fillStyle = 'rgba(20,33,61,0.55)';
+      ctx.fillRect(bx + mW * 0.28, by - mH, mW * 0.22, mH);
+      // top-left lit edge
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.fillRect(bx - mW * 0.5, by - mH, mW * 0.48, Math.max(1, mH * 0.18));
+      // outline
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(bx - mW * 0.5, by - mH, mW, mH);
+    }
+  };
+  // BACK parapet — deepest into the scene, drawn first
+  drawParapet(BLx, BLy, BRx, BRy, isKing ? 4 : 3);
+  // SIDE parapets (recede front→back; either order is fine, they don't overlap)
+  drawParapet(BLx, BLy, FLx, FLy, isKing ? 3 : 2);  // LEFT
+  drawParapet(BRx, BRy, FRx, FRy, isKing ? 3 : 2);  // RIGHT
+  // FRONT parapet — closest to camera, drawn last so its merlons overlap
+  // anything behind them (back parapet, brazier flame stem, banner base).
+  drawParapet(FLx, FLy, FRx, FRy, isKing ? 4 : 3);
+
+  // ── 5. CORNER TURRETS at the four roof corners ─────────────────────────
+  // Taller blocks at the 4 corners cap each parapet's ends. King towers add
+  // a gold conical spire on top of each turret.
+  // Order: back corners first (deepest), then front (so the front turrets
+  // cleanly cover any side-parapet pixels that intrude into their square).
+  const cornerSpots = [
+    [BLx, BLy], [BRx, BRy], [FLx, FLy], [FRx, FRy],
+  ];
+  for (const [tx, ty] of cornerSpots) {
+    // body
+    ctx.fillStyle = LIGHT;
+    ctx.fillRect(tx - turretW * 0.5, ty - turretH, turretW, turretH);
+    // right shadow (sells the boxy thickness of the turret)
+    ctx.fillStyle = 'rgba(20,33,61,0.60)';
+    ctx.fillRect(tx + turretW * 0.26, ty - turretH, turretW * 0.24, turretH);
+    // top-left lit edge
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.fillRect(tx - turretW * 0.5, ty - turretH, turretW * 0.46, Math.max(1, turretH * 0.10));
+    // a single horizontal block-line mid-way (a touch of stonework detail)
+    ctx.strokeStyle = 'rgba(0,0,0,0.32)';
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.moveTo(tx - turretW * 0.5, ty - turretH * 0.50);
+    ctx.lineTo(tx + turretW * 0.5, ty - turretH * 0.50);
+    ctx.stroke();
+    // outline
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(tx - turretW * 0.5, ty - turretH, turretW, turretH);
+    if (isKing) {
+      // gold conical spire on top
+      const tipY = ty - turretH - turretW * 0.80;
+      ctx.fillStyle = GOLDC;
+      ctx.beginPath();
+      ctx.moveTo(tx - turretW * 0.52, ty - turretH);
+      ctx.lineTo(tx + turretW * 0.52, ty - turretH);
+      ctx.lineTo(tx, tipY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(tx - turretW * 0.52, ty - turretH);
+      ctx.lineTo(tx, tipY);
+      ctx.lineTo(tx - turretW * 0.18, ty - turretH);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(tx - turretW * 0.52, ty - turretH);
+      ctx.lineTo(tx + turretW * 0.52, ty - turretH);
+      ctx.lineTo(tx, tipY);
+      ctx.closePath();
+      ctx.stroke();
+      // tiny gold ball at the apex
+      ctx.fillStyle = GOLDC;
+      ctx.beginPath();
+      ctx.arc(tx, tipY - 2, 2.2, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else {
+      // princess: two tiny mini-crenels on top of each turret
+      for (let k = 0; k < 2; k++) {
+        const bxk = tx - turretW * 0.5 + (k * 0.55 + 0.05) * turretW;
+        ctx.fillStyle = LIGHT;
+        ctx.fillRect(bxk, ty - turretH - turretH * 0.16, turretW * 0.40, turretH * 0.16);
+        ctx.strokeStyle = BLACK;
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(bxk, ty - turretH - turretH * 0.16, turretW * 0.40, turretH * 0.16);
+      }
+    }
+  }
+
+  // Banner pole anchors at the BACK-CENTRE of the roof, just inside the
+  // back parapet's low wall, so the pole rises up through (and past) the
+  // back parapet's merlons and the corner turrets.
+  let bannerTop = roofBackY - lowWallH - merlonH * 0.10;
 
   // ── Banner pole + fluttering team flag ──
   const poleX    = cx + (isKing ? -W * 0.02 : 0);
@@ -9854,8 +11286,8 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.lineWidth = 2.5;
     ctx.font = `bold ${Math.round(tile * 0.60)}px ui-monospace,monospace`;
     ctx.textAlign = 'center';
-    ctx.strokeText('Zz', cx + W * 0.30, cTop - tile * 0.10 + sleepOff);
-    ctx.fillText  ('Zz', cx + W * 0.30, cTop - tile * 0.10 + sleepOff);
+    ctx.strokeText('Zz', cx + W * 0.30, roofBackY - turretH - tile * 0.10 + sleepOff);
+    ctx.fillText  ('Zz', cx + W * 0.30, roofBackY - turretH - tile * 0.10 + sleepOff);
   }
 
   ctx.restore(); // end dormant-alpha wrap

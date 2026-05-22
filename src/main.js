@@ -1,6 +1,7 @@
 import { BOTS } from './registry.js';
 import { createLiveMatch } from './match.js';
 import { draw, arenaPixelSize, legendData } from './renderer.js';
+import { whenBackgroundReady } from './background.js';
 import { CONFIG, TPS } from './config.js';
 import { CARDS } from './cards.js';
 import { crownsFor } from './state.js';
@@ -32,6 +33,10 @@ let match = null;
 let running = false;
 let acc = 0;
 let last = 0;
+// Stays false until the user first hits Play. While false the arena background
+// is pinned to frame 0 so the page loads on a still "pre-match" image instead
+// of mid-animation.
+let hasStarted = false;
 
 function newMatch() {
   const seed = parseInt($('seed').value, 10) || 1;
@@ -89,6 +94,10 @@ function feedLine(st, ev) {
     return `<div>${t} <span class="${oc}">P${ev.owner} ✦ ${ev.card}</span> <span class="fmut">${lane(st, ev.x)} · ${ev.hits} hit</span></div>`;
   if (ev.type === 'towerDestroyed')
     return `<div>${t} <span class="fx">✖ P${ev.owner} ${ev.side} ${ev.kind}</span> <span class="fmut">→ P${ev.by}</span></div>`;
+  if (ev.type === 'buildingDestroyed')
+    return `<div>${t} <span class="${oc}">✖ P${ev.owner} ${ev.card}</span> <span class="fmut">→ P${ev.by}</span></div>`;
+  if (ev.type === 'buildingExpired')
+    return `<div>${t} <span class="${oc}">⌛ P${ev.owner} ${ev.card}</span> <span class="fmut">lifetime ended</span></div>`;
   if (ev.type === 'kingActivated')
     return `<div>${t} <span class="${oc}">P${ev.owner} King awake</span> <span class="fmut">${ev.cause}</span></div>`;
   if (ev.type === 'end')
@@ -138,7 +147,9 @@ function updateHud() {
 }
 
 function render() {
-  draw(ctx, match.state, TILE, { showTargets: $('tgt').checked });
+  const opts = { showTargets: $('tgt').checked };
+  if (!hasStarted) opts.bgFrame = 0;
+  draw(ctx, match.state, TILE, opts);
   updateHud();
 }
 
@@ -168,6 +179,7 @@ $('play').onclick = () => {
   if (!match || match.state.ended) newMatch();
   running = !running;
   last = 0;
+  if (running) hasStarted = true;
   $('play').textContent = running ? '⏸ Pause' : '▶ Play';
 };
 $('step').onclick = () => {
@@ -188,4 +200,7 @@ window.CR = {
 };
 
 newMatch();
+// Repaint once frame 0 of the baked background has decoded so the first
+// visible frame is the pre-game still instead of the fallback fill colour.
+whenBackgroundReady().then(() => { if (!hasStarted) render(); });
 requestAnimationFrame(frame);

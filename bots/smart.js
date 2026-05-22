@@ -84,6 +84,36 @@ export default function smart(v) {
   const tied = v.crowns.self === v.crowns.enemy;
   const closing = tied && (v.phase === 'overtime' || (v.phase === 'normal' && v.timeRemaining <= 20));
 
+  // ── Building placement safety ──────────────────────────────────────────────
+  // Footprint radii matching config.towerFootprint; cannon radius from cards.
+  const TOWER_FP = { princess: 1.5, king: 2.0 };
+  const BUILDING_RADIUS = { Cannon: v.cards.Cannon.radius || 1.5 };
+  function isBlockedBuilding(x, y, br) {
+    for (const t of v.towers) {
+      if (!t.alive) continue;
+      const tr = t.kind === 'king' ? TOWER_FP.king : TOWER_FP.princess;
+      const dx = x - t.x, dy = y - t.y;
+      if (dx * dx + dy * dy < (br + tr) * (br + tr)) return true;
+    }
+    for (const u of v.units) {
+      if (!u.building || u.hp <= 0) continue;
+      const ur = (v.cards[u.card] && v.cards[u.card].radius) || 1.5;
+      const dx = x - u.x, dy = y - u.y;
+      if (dx * dx + dy * dy < (br + ur) * (br + ur)) return true;
+    }
+    return false;
+  }
+  // Find the nearest valid y (stepping toward the river) for a building.
+  function safeBuildingTroop(card, x, side, yWant) {
+    const br = BUILDING_RADIUS[card] || 1.5;
+    const step = toward * 0.5;
+    let y = legalY(yWant, side);
+    for (let i = 0; i < 20; i++, y = legalY(y + step, side)) {
+      if (!isBlockedBuilding(x, y, br)) return { card, x: clampX(x), y };
+    }
+    return null; // no valid spot found
+  }
+
   // ── 1. Spells — lead the clump by the projectile's travel time ───────────
   // The spell flies from my King tower; by the time it lands (~1–1.5 s) the
   // enemy has moved. Predict each unit's position at impact (it advances at
@@ -188,10 +218,22 @@ export default function smart(v) {
     const contested = defenders.length >= 1 && defDps * 6 >= threatHp;
     if (!contested) {
       let order;
-      if (anyAir) order = ['Musketeer', 'Archers', 'Minions'];
-      else if (tank) order = ['Goblins', 'Knight', 'Musketeer', 'Archers']; // swarm + dps
-      else order = ['Knight', 'Goblins', 'Musketeer', 'Archers'];
-      for (const c of order) if (has(c)) return troop(c, lead.x, side, baseY + toward * 1.5);
+      // Minions is no longer in the deck (Cannon replaced it); Musketeer +
+      // Archers are now the only anti-air answer. Cannon is ground-only so
+      // it stays off the air-response list — falling through to ranged
+      // ground troops is the only option when both fliers cycle out.
+      if (anyAir) order = ['Musketeer', 'Archers'];
+      else if (tank) order = ['Goblins', 'Knight', 'Cannon', 'Musketeer', 'Archers']; // swarm + dps + cannon
+      else order = ['Knight', 'Goblins', 'Cannon', 'Musketeer', 'Archers'];
+      for (const c of order) {
+        if (!has(c)) continue;
+        if (c === 'Cannon') {
+          const p = safeBuildingTroop('Cannon', lead.x, side, baseY + toward * 3.5);
+          if (p) return p;
+        } else {
+          return troop(c, lead.x, side, baseY + toward * 1.5);
+        }
+      }
       // Can't answer with a synergy troop. Holding is fine while poor, but
       // holding a Giant/spell-only hand while CAPPED both leaks elixir AND
       // doesn't defend (measured seed 2: P1 leaked 12.8 this way). When near

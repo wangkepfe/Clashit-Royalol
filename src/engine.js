@@ -11,7 +11,9 @@ function dist(a, b) {
 
 // Reach radius used when deciding if an attack connects (unchanged combat math).
 function entityRadius(e) {
-  return e._tower ? 1.4 : 0.4;
+  if (e._tower) return 1.4;
+  if (e._building) return (e.def && e.def.radius) || 0.6;
+  return 0.4;
 }
 
 // Physical body radius for unit-vs-unit push-out (real CR CollisionRadius).
@@ -56,7 +58,9 @@ function logEvent(state, ev) {
 
 // Can `def` (an attacker's card def) damage entity `e`?
 function canHit(def, e) {
-  if (e._tower) return true; // every attacker can damage buildings
+  // Towers and defensive buildings count as "buildings": every ground/air
+  // attacker can damage them, and the Giant (buildingsOnly) targets them.
+  if (e._tower || e._building) return true;
   if (def.buildingsOnly) return false; // Giant ignores troops
   return e.flying ? def.targetsAir : def.targetsGround;
 }
@@ -70,7 +74,7 @@ function ref(e) {
     id: e.id != null ? e.id : null,
     name: e.name || e.card || e.kind || '?',
     owner: e.owner,
-    kind: e._tower ? 'tower' : e._spell ? 'spell' : 'unit',
+    kind: e._tower ? 'tower' : e._building ? 'building' : e._spell ? 'spell' : 'unit',
     x: r1(e.x),
     y: r1(e.y),
   };
@@ -134,8 +138,27 @@ function applyDamage(state, e, dmg, source) {
       });
       state.effects.push({ kind: 'towerDown', x: e.x, y: e.y, ttl: 0.5 });
     }
-  } else if (lethal && state.traceEnabled) {
-    logEvent(state, { type: 'death', unit: ref(e), by: ref(source) });
+  } else if (lethal) {
+    if (e._building) {
+      // Buildings get a dedicated event so the feed can show "Cannon ✖" the
+      // same way a tower destruction is shown. Always logged (not gated on
+      // traceEnabled) so the event feed picks it up.
+      logEvent(state, {
+        type: 'buildingDestroyed',
+        owner: e.owner,
+        by: attackerOwner,
+        card: e.card,
+        name: e.name,
+        byName: source ? source.name : null,
+        x: r1(e.x),
+        y: r1(e.y),
+        cause: 'damage',
+      });
+      state.effects.push({ kind: 'towerDown', x: e.x, y: e.y, ttl: 0.5 });
+    }
+    if (state.traceEnabled) {
+      logEvent(state, { type: 'death', unit: ref(e), by: ref(source) });
+    }
   }
 }
 
@@ -195,6 +218,24 @@ function tryDeploy(state, owner, action) {
     if (x < 0 || x > A.width || y < 0 || y > A.height) return failPlay(state, owner, 'offArena');
   } else if (!legalTroopZone(state, owner, x, y)) {
     return failPlay(state, owner, 'illegalZone');
+  }
+
+  // Buildings cannot be placed overlapping a crown tower or an existing building.
+  if (def.kind === 'building') {
+    const br = def.radius || 1.5;
+    const fp = state.config.towerFootprint;
+    for (const t of state.towers) {
+      if (!t.alive) continue;
+      const tr = t.kind === 'king' ? fp.king : fp.princess;
+      const dx = x - t.x, dy = y - t.y;
+      if (dx * dx + dy * dy < (br + tr) * (br + tr)) return failPlay(state, owner, 'blockedByTower');
+    }
+    for (const u of state.units) {
+      if (!u._building || u.hp <= 0) continue;
+      const ur = (u.def && u.def.radius) || 1.5;
+      const dx = x - u.x, dy = y - u.y;
+      if (dx * dx + dy * dy < (br + ur) * (br + ur)) return failPlay(state, owner, 'blockedByBuilding');
+    }
   }
 
   // Commit: pay, cycle the card.
@@ -380,8 +421,36 @@ function updateUnits(state) {
       continue; // frozen while deploying
     }
 
+    // Buildings: tick lifetime — real CR self-destructs the entity after
+    // `lifetime` seconds even at full HP. Despawn cleanly (no damage source,
+    // log a dedicated "buildingExpired" event for the feed/trace).
+    if (u._building) {
+      u.lifetime -= DT;
+      if (u.lifetime <= 0) {
+        u.hp = 0;
+        logEvent(state, {
+          type: 'buildingExpired',
+          owner: u.owner,
+          card: u.card,
+          name: u.name,
+          x: r1(u.x),
+          y: r1(u.y),
+        });
+        state.effects.push({ kind: 'towerDown', x: u.x, y: u.y, ttl: 0.5 });
+        continue;
+      }
+    }
+
     const { goal, attack } = pickGoal(state, u);
     if (!goal) continue;
+    // Buildings only carry a target id when they actually have something
+    // they can shoot (attack=true). Otherwise leave targetId null so the
+    // sprite barrel stays in its idle forward-facing pose instead of
+    // pivoting across the map toward an out-of-range crown tower.
+    if (u._building && !attack) {
+      u.targetId = null;
+      continue;
+    }
     u.targetId = goal.id;
 
     const reach = u.def.range + entityRadius(goal);
@@ -415,7 +484,8 @@ function updateUnits(state) {
           });
         }
       }
-    } else {
+    } else if (!u._building) {
+      // Buildings are stationary — they only attack what wanders into range.
       moveToward(state, u, goal);
     }
   }

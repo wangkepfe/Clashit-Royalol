@@ -1,6 +1,6 @@
 // Readable canvas 2D rendering. Player 0 = bottom (blue), Player 1 = top (red).
 // y is flipped so y=0 (P0 back line) is at the bottom of the screen.
-import { CARDS } from './cards.js';
+import { CARDS, DECK } from './cards.js';
 import {
   beginFrame, getAnim,
   drawKnight, markKnight,
@@ -9,6 +9,7 @@ import {
   drawGoblin, markGoblin,
   drawMinion, markMinion, drawMinionSpit,
   drawMusketeer, markMusketeer, drawMusketBullet,
+  drawCannon, markCannon, drawCannonball,
   drawFireballProjectile, drawFireballImpact,
   drawArrowsProjectile, drawArrowsImpact,
   drawTower,
@@ -32,7 +33,8 @@ export const CARD_VIS = {
   Archers: { label: 'Ac', shape: 'ranged' },
   Goblins: { label: 'Gb', shape: 'melee' },
   Giant: { label: 'Gi', shape: 'tank' },
-  Minions: { label: 'Mi', shape: 'air' },
+  Minions: { label: 'Mi', shape: 'air' },        // kept for fallback if forced
+  Cannon: { label: 'Cn', shape: 'building' },    // defensive ground building
   Musketeer: { label: 'Mu', shape: 'ranged' },
   Fireball: { label: 'Fb', shape: 'spell' },
   Arrows: { label: 'Ar', shape: 'spell' },
@@ -44,13 +46,19 @@ export function arenaPixelSize(state, tile) {
 }
 
 export function legendData() {
-  return Object.entries(CARDS).map(([name, d]) => ({
-    name,
-    label: CARD_VIS[name].label,
-    kind: d.kind,
-    cost: d.cost,
-    shape: CARD_VIS[name].shape,
-  }));
+  // Only show cards that are actually in the live deck. Minions stays defined
+  // in CARDS (for fallback rendering if someone forces a deploy via tooling)
+  // but is intentionally hidden from the in-app legend.
+  return DECK.map((name) => {
+    const d = CARDS[name];
+    return {
+      name,
+      label: CARD_VIS[name].label,
+      kind: d.kind,
+      cost: d.cost,
+      shape: CARD_VIS[name].shape,
+    };
+  });
 }
 
 function unitRadius(maxHp) {
@@ -79,7 +87,9 @@ export function draw(ctx, state, tile, opts = {}) {
   };
 
   // ── arena background (baked Clash-Royale scene, animated loop) ────────────
-  drawBackground(ctx, CW, CH);
+  // `opts.bgFrame` pins a specific frame (used as a static still before the
+  // user starts the match); otherwise the wall-clock loop drives animation.
+  drawBackground(ctx, CW, CH, opts.bgFrame);
 
   // ── recent-play markers (so you can see what a bot just did) ──────────────
   if (state.logEnabled) {
@@ -104,25 +114,6 @@ export function draw(ctx, state, tile, opts = {}) {
         sy(ev.y) - tile * (1.4 - f)
       );
       ctx.globalAlpha = 1;
-    }
-  }
-
-  // ── towers ────────────────────────────────────────────────────────────────
-  // drawTower handles every state internally (alive activated, alive dormant
-  // king, dead rubble pile) and reads kind/owner/hp/etc. straight off the
-  // tower entity. We keep the HP bar in the renderer, pushed up above the
-  // tower's banner pole + battlements (taller for the king tower).
-  for (const t of state.towers) {
-    const size = (t.kind === 'king' ? 3.0 : 2.4) * tile;
-    const cx = sx(t.x);
-    const cy = sy(t.y);
-    const y0 = cy - size / 2;
-    const team = t.owner === 0 ? COL.p0    : COL.p1;
-    const dim  = t.owner === 0 ? COL.p0dim : COL.p1dim;
-    drawTower(ctx, cx, cy, tile, t, { team, dim });
-    if (t.alive) {
-      const hpOff = tile * (t.kind === 'king' ? 1.7 : 1.4);
-      barNum(ctx, cx, y0 - hpOff, size, t.hp / t.maxHp, Math.round(t.hp), tile, t.owner);
     }
   }
 
@@ -198,12 +189,36 @@ export function draw(ctx, state, tile, opts = {}) {
     }
   }
 
-  // ── units ─────────────────────────────────────────────────────────────────
-  // Painter's algorithm: draw farther units first so closer-to-camera ones
-  // (lower world y, which maps to LARGER screen y under sy()) paint on top.
-  // Sort a copy so we don't mutate the sim's unit array.
-  const unitsByDepth = [...state.units].sort((a, b) => b.y - a.y);
-  for (const u of unitsByDepth) {
+  // ── towers + units (combined depth pass) ─────────────────────────────────
+  // Painter's algorithm: draw farther entities first so closer-to-camera
+  // ones (lower world y, which maps to LARGER screen y under sy()) paint on
+  // top — including their HP bars, so a foreground unit's bar correctly
+  // covers a background tower/unit. Towers join the sort so a unit standing
+  // BEHIND a tower (higher world y) is properly hidden by the tower body.
+  const depthItems = [];
+  for (const t of state.towers) depthItems.push({ y: t.y, kind: 'tower', e: t });
+  for (const u of state.units)  depthItems.push({ y: u.y, kind: 'unit',  e: u });
+  depthItems.sort((a, b) => b.y - a.y);
+  for (const item of depthItems) {
+    if (item.kind === 'tower') {
+      // drawTower handles every state internally (alive activated, alive
+      // dormant king, dead rubble pile). HP bar floats above the tower's
+      // banner pole + battlements (taller for the king tower).
+      const t = item.e;
+      const size = (t.kind === 'king' ? 3.0 : 2.4) * tile;
+      const cx = sx(t.x);
+      const cy = sy(t.y);
+      const y0 = cy - size / 2;
+      const team = t.owner === 0 ? COL.p0    : COL.p1;
+      const dim  = t.owner === 0 ? COL.p0dim : COL.p1dim;
+      drawTower(ctx, cx, cy, tile, t, { team, dim });
+      if (t.alive) {
+        const hpOff = tile * (t.kind === 'king' ? 1.7 : 1.4);
+        barNum(ctx, cx, y0 - hpOff, size, t.hp / t.maxHp, Math.round(t.hp), tile, t.owner);
+      }
+      continue;
+    }
+    const u = item.e;
     if (u.card === 'Knight') {
       const p = getAnim(u, dtReal, findTarget(u.targetId));
       markKnight(u.id);
@@ -251,6 +266,22 @@ export function draw(ctx, state, tile, opts = {}) {
       markMusketeer(u.id);
       drawMusketeer(ctx, sx(u.x), sy(u.y), tile, p);
       barNum(ctx, sx(u.x), sy(u.y) - tile * 2.35, tile * 1.4, u.hp / u.maxHp, 0, tile, u.owner);
+      continue;
+    }
+    if (u.card === 'Cannon') {
+      // Defensive 3×3-tile mortar — short fat rotating barrel on a 2.5D
+      // wooden trestle. drawCannon owns its own per-unit rig (separate Map
+      // from troop anim) so it stays put across frames; we feed it the
+      // target's screen position so the barrel can aim. The amber lifetime
+      // warning is rendered ON the sprite (dim/amber wash in the last 6 s)
+      // so we draw ONE bar here — the HP bar.
+      const tgt = findTarget(u.targetId);
+      const tgtSc = tgt ? { x: sx(tgt.x), y: sy(tgt.y) } : null;
+      markCannon(u.id);
+      drawCannon(ctx, sx(u.x), sy(u.y), tile, u, tgtSc, dtReal);
+      // Sprite top sits ~sc * 1.20 above feet (sc = tile * 1.5 → tile * 1.8).
+      // Pad ~0.5 tile so the HP bar floats just above the saddle's back edge.
+      barNum(ctx, sx(u.x), sy(u.y) - tile * 2.3, tile * 2.2, u.hp / u.maxHp, 0, tile, u.owner);
       continue;
     }
     const c = u.owner === 0 ? COL.p0 : COL.p1;
@@ -389,6 +420,16 @@ export function draw(ctx, state, tile, opts = {}) {
           ang = Math.atan2(dyS, dxS);
         }
         drawMusketBullet(ctx, px, py, ang, tile, {});
+      } else if (p.src && p.src.card === 'Cannon') {
+        // Heavy iron cannonball with a brass-gold heated leading edge,
+        // a smoke trail and a short motion-blur streak. Travels straight,
+        // homing on its target. Same screen-space angle math as other bolts.
+        let ang = 0;
+        if (tgt) {
+          const dxS = sx(tgt.x) - px, dyS = sy(tgt.y) - py;
+          ang = Math.atan2(dyS, dxS);
+        }
+        drawCannonball(ctx, px, py, ang, tile, { motion: true });
       } else {
         // Fallback for tower bolts, etc.: short tracer pointing toward
         // the (homing) target + white tip dot. Tower shots have p.src._tower
