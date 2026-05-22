@@ -22,6 +22,15 @@ const STRIDE = 0.85;   // world tiles per full leg cycle
 const SWING = 0.30;    // seconds of an attack swing animation
 const FLASH = 0.14;    // seconds of hit flash
 
+// Global cartoon outline thickness, in screen pixels per tile.
+// Every unit's body outline (OW) is `OUTLINE_PX_PER_TILE * tile` — NOT
+// `... * sc` — so the silhouette stroke is the same screen-space width on a
+// Goblin (S=0.45*tile), Knight (0.68*tile), Musketeer (0.62*tile) and Giant
+// (1.05*tile). Per-unit scaling cancels out instead of multiplying through.
+// Inner accents still use OW * <ratio> so the original hierarchy (chest stud
+// thicker, blade edge thinner) survives.
+const OUTLINE_PX_PER_TILE = 0.055;
+
 const anim = new Map(); // unit id -> persistent rig state
 const poofs = [];       // transient death effects
 let _lastNow = 0;
@@ -379,7 +388,7 @@ export function drawKnight(ctx, gx, gy, tile, p) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
   const OL = OUTLINE;
-  const OW = 0.075 * sc;
+  const OW = OUTLINE_PX_PER_TILE * tile;
 
   // Helper: T-visor + glowing team-color eye dots + breathing holes.
   // Used by side and front views (back view shows the helmet back, no face).
@@ -1271,7 +1280,7 @@ export function drawGiant(ctx, gx, gy, tile, p) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
   const OL = G_DARK;
-  const OW = 0.090 * sc;
+  const OW = OUTLINE_PX_PER_TILE * tile;
 
   // ── club helper (drawn at the grip; shaft up local -y) ─────────────────
   // Reused by all three views & by the motion-smear ghost echoes.
@@ -2311,7 +2320,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
   const OL = A_OL;
-  const OW = 0.065 * sc;
+  const OW = OUTLINE_PX_PER_TILE * tile;
 
   // ── reusable bow drawing helper ────────────────────────────────────────
   // Drawn at the bow grip; the bow is centered at local origin with its
@@ -3348,7 +3357,7 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
   const OL = G_DARK;
-  const OW = 0.060 * sc;
+  const OW = OUTLINE_PX_PER_TILE * tile;
 
   // ── helper: the dagger ─────────────────────────────────────────────────
   // Drawn so the blade points along local +x; the handle's grip is at the
@@ -4297,7 +4306,7 @@ export function drawMinion(ctx, gx, gy, tile, p) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
   const OL = M_INK;
-  const OW = 0.060 * sc;
+  const OW = OUTLINE_PX_PER_TILE * tile;
 
   // ── proportions ────────────────────────────────────────────────────────
   // The body is pear-shaped — wider at the chest/shoulders, narrowing
@@ -5120,7 +5129,7 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
   const OL = MK_NAVY_D;
-  const OW = 0.065 * sc;
+  const OW = OUTLINE_PX_PER_TILE * tile;
 
   // ── reusable: the musket ──────────────────────────────────────────────
   // A proper flintlock rifle silhouette — walnut wood stock (butt + wrist
@@ -7999,6 +8008,11 @@ export function drawCannon(ctx, gx, gy, tile, u, targetSc, dtReal) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
 
+  // Cartoon outline thickness — same value used by every character + tower
+  // sprite, so the cannon's main edges read in one consistent style. Detail
+  // strokes (brass rings, trunnion cap, wood grain) keep their thinner widths.
+  const OW = OUTLINE_PX_PER_TILE * tile;
+
   // ── ground shadow (compact, under the trestle's feet) ────────────────────
   ctx.fillStyle = `rgba(0,0,0,${0.52 * (1 - lifeFade * 0.20)})`;
   ctx.beginPath();
@@ -8071,7 +8085,7 @@ export function drawCannon(ctx, gx, gy, tile, u, targetSc, dtReal) {
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = CN_OL;
-  ctx.lineWidth = 1.6;
+  ctx.lineWidth = OW;
   ctx.stroke();
 
   // Top-lit highlight along the back edge (sun from above-back)
@@ -8118,7 +8132,7 @@ export function drawCannon(ctx, gx, gy, tile, u, targetSc, dtReal) {
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = CN_OL;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = OW;
   ctx.stroke();
 
   // Vertical front-leg strapping (3 dark iron bands, evenly spaced)
@@ -8186,7 +8200,7 @@ export function drawCannon(ctx, gx, gy, tile, u, targetSc, dtReal) {
   rr(ctx, xBack, -barR, barL, barR * 2, barR * 0.45);
   ctx.fill();
   ctx.strokeStyle = CN_OL;
-  ctx.lineWidth = 2.0;
+  ctx.lineWidth = OW;
   rr(ctx, xBack, -barR, barL, barR * 2, barR * 0.45);
   ctx.stroke();
 
@@ -8215,7 +8229,7 @@ export function drawCannon(ctx, gx, gy, tile, u, targetSc, dtReal) {
   rr(ctx, xFront - flareW, -flareR, flareW, flareR * 2, sc * 0.04);
   ctx.fill();
   ctx.strokeStyle = CN_OL;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = OW;
   ctx.stroke();
 
   // Dark bore (the muzzle hole) — drawn as an ellipse just inside the lip.
@@ -8507,6 +8521,14 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
 
   const T = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 
+  // Global cartoon outline thickness — same value used by every character
+  // sprite. Every outer silhouette stroke on the tower (wall, roof, parapets,
+  // turrets, door, flag, etc.) goes through this so the tower reads in the
+  // same cartoon style as the units fighting around it. Smaller decorative
+  // strokes (stone-grid mortar, HP cracks, lantern detail) deliberately stay
+  // thinner so visual hierarchy survives.
+  const OW = OUTLINE_PX_PER_TILE * tile;
+
   // ── DEAD STATE: rubble pile ───────────────────────────────────────────
   if (!t.alive) {
     // Wide dark ground shadow under the heap.
@@ -8539,7 +8561,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.ellipse(cx, y1 - H * 0.04, W * 0.46, H * 0.20, 0, 0, TAU);
     ctx.fill();
     ctx.strokeStyle = BLACK;
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = OW;
     ctx.stroke();
     ctx.fillStyle = LIGHT;
     ctx.beginPath();
@@ -8749,7 +8771,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
 
   // Wall outline
   ctx.strokeStyle = BLACK;
-  ctx.lineWidth = 2.2;
+  ctx.lineWidth = OW;
   ctx.strokeRect(wallLeftX, wallTop, wallW, bodyH);
 
   // Gold trim band wraps the wall just below the rim
@@ -8774,7 +8796,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.fill();
   }
   ctx.strokeStyle = BLACK;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = OW;
   ctx.strokeRect(wallLeftX, trimY, wallW, trimH);
 
   // Door (front face) or arrow slits (back face)
@@ -8793,7 +8815,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.arc(doorX + doorW / 2, doorY + doorW / 2, doorW / 2 + fr, 0, Math.PI, true);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = BLACK; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.strokeStyle = BLACK; ctx.lineWidth = OW; ctx.stroke();
     ctx.fillStyle = NAVYC;
     ctx.beginPath();
     ctx.moveTo(doorX, doorY + doorW / 2);
@@ -8996,7 +9018,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
 
   // Roof outline (over the grid, so the perimeter reads cleanly)
   ctx.strokeStyle = BLACK;
-  ctx.lineWidth = 2.0;
+  ctx.lineWidth = OW;
   ctx.beginPath();
   ctx.moveTo(FLx, FLy);
   ctx.lineTo(FRx, FRy);
@@ -9113,7 +9135,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.fill();
     // ribbon outline
     ctx.strokeStyle = BLACK;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = OW;
     ctx.beginPath();
     ctx.moveTo(sX, sY);
     ctx.lineTo(eX, eY);
@@ -9141,7 +9163,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
       ctx.fillRect(bx - mW * 0.5, by - mH, mW * 0.48, Math.max(1, mH * 0.18));
       // outline
       ctx.strokeStyle = BLACK;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = OW;
       ctx.strokeRect(bx - mW * 0.5, by - mH, mW, mH);
     }
   };
@@ -9181,7 +9203,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.stroke();
     // outline
     ctx.strokeStyle = BLACK;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = OW;
     ctx.strokeRect(tx - turretW * 0.5, ty - turretH, turretW, turretH);
     if (isKing) {
       // gold conical spire on top
@@ -9201,7 +9223,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = BLACK;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = OW;
       ctx.beginPath();
       ctx.moveTo(tx - turretW * 0.52, ty - turretH);
       ctx.lineTo(tx + turretW * 0.52, ty - turretH);
@@ -9292,7 +9314,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = BLACK;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = OW;
   ctx.stroke();
   // gold trim on the leading edge (against the pole)
   ctx.strokeStyle = GOLDC;
