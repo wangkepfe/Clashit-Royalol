@@ -19,6 +19,16 @@ const RENDER_SCALE = 3;
 const $ = (id) => document.getElementById(id);
 const cv = $('cv');
 const ctx = cv.getContext('2d');
+const CARD_ART = {
+  Knight: './assets/cards/knight.png',
+  Archers: './assets/cards/archers.png',
+  Goblins: './assets/cards/goblins.png',
+  Giant: './assets/cards/giant.png',
+  Cannon: './assets/cards/cannon.png',
+  Musketeer: './assets/cards/musketeer.png',
+  Fireball: './assets/cards/fireball.png',
+  Arrows: './assets/cards/arrows.png',
+};
 
 (function sizeCanvas() {
   const { w, h } = arenaPixelSize({ config: CONFIG }, TILE);
@@ -133,8 +143,26 @@ function towerBoard(el, st, owner) {
     .join('');
 }
 
-function cardChip(name, next) {
-  return `<div class="card ${next ? 'next' : ''}">${name}<br><span class="c">${CARDS[name].cost}⚡</span></div>`;
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function cardProfile(name, elixir) {
+  const cost = CARDS[name].cost;
+  const unavailable = elixir + 1e-6 < cost;
+  const safeName = escapeHtml(name);
+  const art = CARD_ART[name] || '';
+  return `<div class="card${unavailable ? ' unplayable' : ''}" title="${safeName}: ${cost} elixir">
+    <div class="cardName">${safeName}</div>
+    <div class="cardFrame"><img class="cardArt" src="${art}" alt="${safeName}" draggable="false" /></div>
+    <div class="cardCost">${cost} elixir</div>
+  </div>`;
 }
 
 const lane = (st, x) => (x < st.config.arena.width / 2 ? 'L' : 'R');
@@ -184,8 +212,7 @@ function updateHud() {
   for (const pid of [0, 1]) {
     const p = st.players[pid];
     pips($('pips' + pid), p.elixir);
-    $('hand' + pid).innerHTML =
-      p.hand.map((c) => cardChip(c, false)).join('') + cardChip(p.cycle[0], true);
+    $('hand' + pid).innerHTML = p.hand.map((c) => cardProfile(c, p.elixir)).join('');
     towerBoard($('tw' + pid), st, pid);
     $('cr' + pid).textContent = crownsFor(st, pid);
   }
