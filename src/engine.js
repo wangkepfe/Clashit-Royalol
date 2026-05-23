@@ -9,11 +9,18 @@ function dist(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Reach radius used when deciding if an attack connects (unchanged combat math).
+// Reach radius used when deciding if an attack connects. For units this MUST
+// match bodyRadius() — the collision resolver pushes overlapping bodies apart
+// to exactly `bodyRadius(a) + bodyRadius(b)` center-to-center, so if attack
+// reach used a smaller target radius the attacker would be permanently shoved
+// outside its own hit distance. Goblins (range 0.5, radius 0.5) hit a Knight
+// (radius 0.5) at center distance 1.0, which equals their collision sep —
+// any smaller target radius and they could never land a swing on another
+// ground troop (no rising cooldown edge → no attack animation either).
 function entityRadius(e) {
   if (e._tower) return 1.4;
   if (e._building) return (e.def && e.def.radius) || 0.6;
-  return 0.4;
+  return (e.def && e.def.radius) || 0.4;
 }
 
 // Physical body radius for unit-vs-unit push-out (real CR CollisionRadius).
@@ -155,6 +162,18 @@ function applyDamage(state, e, dmg, source) {
         cause: 'damage',
       });
       state.effects.push({ kind: 'towerDown', x: e.x, y: e.y, ttl: 0.5 });
+    } else {
+      // Unit death cue for the audio layer — pushed for *every* unit kill,
+      // independent of trace logging. The renderer ignores 'death' effects;
+      // they exist purely so SFX can play a per-card scream / grunt / squeak.
+      state.effects.push({
+        kind: 'death',
+        card: e.card,
+        owner: e.owner,
+        x: e.x,
+        y: e.y,
+        ttl: 0.1,
+      });
     }
     if (state.traceEnabled) {
       logEvent(state, { type: 'death', unit: ref(e), by: ref(source) });
@@ -326,7 +345,13 @@ function pickGoal(state, u) {
   if (u._aggroLocked && u.targetId != null) {
     const cur = findEntity(state, u.targetId);
     if (cur && cur.owner !== u.owner && canHit(u.def, cur) && dist(u, cur) <= u.def.sight) {
-      const reach = u.def.range + entityRadius(cur);
+      // Tiny float-precision slack: collision resolution pushes overlapping
+      // bodies to *exactly* minD apart, and sqrt() can come back with a 1e-12
+      // error either side. Without the slack a melee attacker whose reach
+      // equals the body-collision distance (e.g. Goblin range 0.5 + Knight
+      // radius 0.5 = 1.0 = body sum) would flicker in and out of attack range
+      // and rarely actually swing.
+      const reach = u.def.range + entityRadius(cur) + 1e-4;
       return { goal: cur, attack: dist(u, cur) <= reach };
     }
     u._aggroLocked = false; // lock broken; fall through to re-acquire
@@ -365,43 +390,60 @@ function pickGoal(state, u) {
   return { goal: tower, attack: false };
 }
 
-// Steer the unit around solid tower footprints (towers are not walk-through).
-// The footprint is treated as a circle: when a step would enter it, the unit
-// is slid *along* the border toward whichever side makes progress to its goal
-// (a pure radial push-out would just pin a unit whose goal is straight behind
-// the tower). The tower it is attacking is excluded so it can still close in.
-function avoidTowers(state, u, nx, ny, goal) {
+// Slide a candidate step (nx,ny) tangentially around a single circular
+// obstacle at (ox,oy) with combined radius `minD` (obstacle footprint + unit
+// body). When the step would enter the circle we walk *along* the border
+// toward whichever side makes progress to the goal (a pure radial push-out
+// would pin a unit whose goal is straight behind the obstacle). The re-
+// projected step keeps the same magnitude as the original linear step, so
+// the unit slides past at full speed instead of stalling against the edge.
+function slideAroundCircle(u, nx, ny, goal, ox, oy, minD) {
+  const ddx = nx - ox, ddy = ny - oy;
+  if (ddx * ddx + ddy * ddy >= minD * minD) return [nx, ny]; // step stays clear
+
+  // Radius vector from the obstacle to the unit's current position (stable
+  // even when the *intended* point is dead-centre behind the obstacle).
+  let rx = u.x - ox, ry = u.y - oy;
+  let rd = Math.hypot(rx, ry);
+  if (rd < 1e-4) {
+    rx = ddx; ry = ddy; rd = Math.hypot(rx, ry) || 1;
+  }
+  const mv = Math.hypot(nx - u.x, ny - u.y); // intended travel this tick
+
+  // Tangent along the circle; pick the direction that heads toward the goal.
+  let tnx = -ry / rd, tny = rx / rd;
+  if (tnx * (goal.x - u.x) + tny * (goal.y - u.y) < 0) {
+    tnx = -tnx; tny = -tny;
+  }
+
+  // Walk along the border: boundary point next to the unit, advance by the
+  // tangent, then re-project so the path hugs the footprint edge.
+  let bx = ox + (rx / rd) * minD + tnx * mv;
+  let by = oy + (ry / rd) * minD + tny * mv;
+  const bd = Math.hypot(bx - ox, by - oy) || 1;
+  return [ox + ((bx - ox) / bd) * minD, oy + ((by - oy) / bd) * minD];
+}
+
+// Steer the unit around solid obstacles: crown towers AND defensive buildings
+// (Cannon etc.). All obstacles share the circular-footprint model so the unit
+// slides tangentially at full speed instead of getting jammed against a flat
+// edge. The unit's own aggro target is excluded so it can still close into
+// attack range.
+function avoidObstacles(state, u, nx, ny, goal) {
   const fp = state.config.towerFootprint;
   const ur = bodyRadius(u);
+
   for (const t of state.towers) {
     if (!t.alive) continue;
     if (goal && goal._tower && goal.id === t.id) continue;
-    const minD = (t.kind === 'king' ? fp.king : fp.princess) + ur;
-    const ddx = nx - t.x, ddy = ny - t.y;
-    if (ddx * ddx + ddy * ddy >= minD * minD) continue; // step stays clear
-
-    // Radius vector from the tower to the unit's current position (stable
-    // even when the *intended* point is dead-centre behind the tower).
-    let rx = u.x - t.x, ry = u.y - t.y;
-    let rd = Math.hypot(rx, ry);
-    if (rd < 1e-4) {
-      rx = ddx; ry = ddy; rd = Math.hypot(rx, ry) || 1;
-    }
-    const mv = Math.hypot(nx - u.x, ny - u.y); // intended travel this tick
-
-    // Tangent along the circle; pick the direction that heads toward the goal.
-    let tnx = -ry / rd, tny = rx / rd;
-    if (tnx * (goal.x - u.x) + tny * (goal.y - u.y) < 0) {
-      tnx = -tnx; tny = -tny;
-    }
-
-    // Walk along the border: boundary point next to the unit, advance by the
-    // tangent, then re-project so the path hugs the footprint edge.
-    let bx = t.x + (rx / rd) * minD + tnx * mv;
-    let by = t.y + (ry / rd) * minD + tny * mv;
-    const bd = Math.hypot(bx - t.x, by - t.y) || 1;
-    nx = t.x + ((bx - t.x) / bd) * minD;
-    ny = t.y + ((by - t.y) / bd) * minD;
+    const r = (t.kind === 'king' ? fp.king : fp.princess) + ur;
+    [nx, ny] = slideAroundCircle(u, nx, ny, goal, t.x, t.y, r);
+  }
+  for (const b of state.units) {
+    if (!b._building || b.hp <= 0 || b.id === u.id) continue;
+    if (goal && goal.id === b.id) continue;
+    const r = ((b.def && b.def.radius) || 0.6) + ur;
+    [nx, ny] = slideAroundCircle(u, nx, ny, goal, b.x, b.y, r);
   }
   return [nx, ny];
 }
@@ -430,14 +472,46 @@ function moveToward(state, u, goal) {
   let nx = u.x + (dx / len) * step;
   let ny = u.y + (dy / len) * step;
 
-  [nx, ny] = avoidTowers(state, u, nx, ny, goal);
-
-  // Block ground units from walking into the river off-bridge.
+  // River bank slide: ground units cannot enter the water except across a
+  // bridge. The naive fix (clamp ny to the bank) throws away most of the
+  // step's energy — a diagonal walker hitting the bank loses its big dy and
+  // crawls toward the bridge using only the small dx component. Instead, the
+  // blocked vertical motion is *redirected* into horizontal motion toward
+  // the nearest bridge, so the unit slides along the bank at full walking
+  // speed and naturally walks onto the bridge.
   if (!u.flying && ny > A.river[0] && ny < A.river[1]) {
     let nearBridge = false;
-    for (const bx of A.bridges) if (Math.abs(nx - bx) <= A.bridgeHalfWidth) nearBridge = true;
-    if (!nearBridge) ny = u.y <= A.mid ? A.river[0] : A.river[1];
+    let bestBx = A.bridges[0], bestBd = Infinity;
+    for (const bx of A.bridges) {
+      const d = Math.abs(nx - bx);
+      if (d <= A.bridgeHalfWidth) nearBridge = true;
+      if (d < bestBd) { bestBd = d; bestBx = bx; }
+    }
+    if (!nearBridge) {
+      if (u.y > A.river[0] && u.y < A.river[1]) {
+        // Already mid-bridge but knocked off horizontally (e.g. push from a
+        // nearby unit). Pull x back onto the bridge so the crossing continues
+        // — never teleport y back to a bank, that would undo crossing
+        // progress already made.
+        nx = bestBx;
+      } else {
+        // Approaching the river from a bank. Snap ny to the bank we came from
+        // and convert the lost vertical step into a same-magnitude horizontal
+        // step toward the nearest bridge (preserving total step length so
+        // walking speed is unchanged).
+        const bankY = u.y <= A.river[0] ? A.river[0] : A.river[1];
+        const dyConsumed = bankY - u.y;
+        const remaining = Math.sqrt(Math.max(0, step * step - dyConsumed * dyConsumed));
+        ny = bankY;
+        const dir = bestBx > u.x ? 1 : -1;
+        let cand = u.x + dir * remaining;
+        if ((dir > 0 && cand > bestBx) || (dir < 0 && cand < bestBx)) cand = bestBx;
+        nx = cand;
+      }
+    }
   }
+
+  [nx, ny] = avoidObstacles(state, u, nx, ny, goal);
 
   u.x = Math.max(0.3, Math.min(A.width - 0.3, nx));
   u.y = Math.max(0.3, Math.min(A.height - 0.3, ny));
@@ -486,7 +560,11 @@ function updateUnits(state) {
     }
     u.targetId = goal.id;
 
-    const reach = u.def.range + entityRadius(goal);
+    // Same 1e-4 slack as pickGoal — see comment there. Without it, a Goblin
+    // that has just been pushed to the body-collision boundary by the
+    // resolver computes dist == reach in math but dist slightly > reach in
+    // float, and silently never swings.
+    const reach = u.def.range + entityRadius(goal) + 1e-4;
     if (attack && dist(u, goal) <= reach) {
       if (u.cooldown <= 0) {
         u.cooldown = u.def.hitSpeed;
@@ -502,6 +580,17 @@ function updateUnits(state) {
             dmg: u.def.dmg,
             src: { id: u.id, owner: u.owner, name: u.name, card: u.card, x: u.x, y: u.y },
           });
+          // Audio-facing launch cue: lets the SFX layer play a bow twang,
+          // gun crack, or mortar boom AT the firing unit, independently of
+          // the eventual impact (which may land seconds later or fizzle).
+          state.effects.push({
+            kind: 'launch',
+            card: u.card,
+            owner: u.owner,
+            x: u.x,
+            y: u.y,
+            ttl: 0.08,
+          });
         } else {
           // Melee: instant damage on contact.
           applyDamage(state, goal, u.def.dmg, u);
@@ -513,6 +602,7 @@ function updateUnits(state) {
             fromY: u.y,
             owner: u.owner,
             ranged: false,
+            attackerCard: u.card,
             ttl: 0.12,
           });
         }
@@ -551,6 +641,17 @@ function updateTowers(state) {
         dmg: t.dmg,
         src: { id: t.id, owner: t.owner, name: t.name, kind: t.kind, x: t.x, y: t.y, _tower: true },
       });
+      // Audio-facing launch cue at the tower's position. card='Tower' lets
+      // the SFX layer pick a bow-twang voice instead of a unit's launch.
+      state.effects.push({
+        kind: 'launch',
+        card: 'Tower',
+        towerKind: t.kind,
+        owner: t.owner,
+        x: t.x,
+        y: t.y,
+        ttl: 0.08,
+      });
     }
   }
 }
@@ -582,7 +683,13 @@ function updateProjectiles(state) {
       if (p.kind === 'bolt') {
         applyDamage(state, tgt, p.dmg, p.src);
         state.effects.push({
-          kind: 'hit', x: tgt.x, y: tgt.y, owner: p.owner, ranged: false, ttl: 0.12,
+          kind: 'hit',
+          x: tgt.x,
+          y: tgt.y,
+          owner: p.owner,
+          ranged: true,
+          attackerCard: (p.src && p.src.card) || (p.src && p.src._tower ? 'Tower' : null),
+          ttl: 0.12,
         });
       } else {
         const hits = applySpell(state, p.owner, p.card, p.tx, p.ty, applyDamage);
@@ -640,14 +747,22 @@ function resolveUnitCollisions(state) {
     }
   }
   // Re-clamp to the arena and keep ground units out of the river off-bridge.
+  // If a push has nudged a mid-crossing unit sideways off the bridge, snap
+  // its x back onto the nearest bridge rather than its y to a bank — the
+  // latter would cancel the crossing progress already made.
   for (const u of us) {
     if (u.hp <= 0) continue;
     u.x = Math.max(0.3, Math.min(A.width - 0.3, u.x));
     u.y = Math.max(0.3, Math.min(A.height - 0.3, u.y));
     if (!u.flying && u.y > A.river[0] && u.y < A.river[1]) {
       let nearBridge = false;
-      for (const bx of A.bridges) if (Math.abs(u.x - bx) <= A.bridgeHalfWidth) nearBridge = true;
-      if (!nearBridge) u.y = u.y - A.mid < 0 ? A.river[0] : A.river[1];
+      let bestBx = A.bridges[0], bestBd = Infinity;
+      for (const bx of A.bridges) {
+        const d = Math.abs(u.x - bx);
+        if (d <= A.bridgeHalfWidth) nearBridge = true;
+        if (d < bestBd) { bestBd = d; bestBx = bx; }
+      }
+      if (!nearBridge) u.x = bestBx;
     }
   }
 }

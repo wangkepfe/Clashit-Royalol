@@ -296,8 +296,13 @@ function rebuildTowerStrip() {
       root.appendChild(cell);
       // Tower objects need a stable id (used as a per-tower random seed).
       const id = (owner * 100) + variants.indexOf(v);
+      // In-engine convention: archers (princess) are always activated; kings
+      // activate when their crown is unlocked. The preview mirrors that so the
+      // alive states render at full brightness — otherwise our damage detail
+      // gets washed out by the dormant globalAlpha=0.82.
+      const activated = v.alive && (v.kind === 'archer' || !v.dormant);
       const t = { id, kind: v.kind, owner, alive: v.alive, hp: v.hp, maxHp: v.maxHp,
-                  x: 0, y: 0, side: 'left', dormant: !!v.dormant };
+                  activated, x: 0, y: 0, side: 'left', dormant: !!v.dormant };
       towerCells.push({ cv, ctx: cv.getContext('2d'), w: cellW, h: cellH,
                         cx: cellW / 2, cy: cellH / 2, t });
     }

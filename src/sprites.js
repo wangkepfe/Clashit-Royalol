@@ -2085,21 +2085,24 @@ export function markGiant(id) {
 }
 
 // ── Archer palette ─────────────────────────────────────────────────────────
-// Spec-supplied core five: dark teal #006d77, mint/sage #83c5be, near-white
-// #edf6f9, peach skin #ffddd2, terracotta leather/wood #e29578. Plus a
-// derived deeper peach, a darker leather, a mint highlight, and a small red
-// fletching accent — all explicitly used as "1-2 derived shades" per spec.
-const A_DARK      = '#006d77';
-const A_DARK_D    = '#004f57';   // derived: deeper teal (hood interior)
-const A_MINT      = '#83c5be';
-const A_MINT_HI   = '#a7d5cf';   // derived: lighter mint (highlights)
-const A_LIGHT     = '#edf6f9';
-const A_SKIN      = '#ffddd2';
-const A_SKIN_SH   = '#e8a89b';   // derived: deeper peach (shading)
-const A_LEATHER   = '#e29578';
-const A_LEATHER_D = '#b86a4d';   // derived: darker leather (shadows)
-const A_RED       = '#bc4749';   // small red fletching accent
-const A_OL        = '#0a2c2f';   // outline: very dark teal-black
+// Spec-supplied core five (pink-dominant): rose pink #edafb8 (main cloth/hood,
+// the dominant color), peach skin #f7e1d7, pale-beige cream #dedbd2 (trim and
+// lace), sage green #b0c4b1 (complementary leather/wood/bow), dark slate
+// #4a5759 (hood interior, dark accents). Plus 1-2 derived shades each: a
+// lighter pink for highlights, a darker sage for leather shadows, a deeper
+// peach for skin shading, a deep-rose accent for lips/ribbons/fletching, and
+// a near-black slate for outline ink.
+const A_DARK      = '#4a5759';
+const A_DARK_D    = '#2f3839';   // derived: deeper slate (hood interior)
+const A_MINT      = '#edafb8';   // DOMINANT pink (cloth/hood/tunic)
+const A_MINT_HI   = '#f5c8ce';   // derived: lighter pink (highlights)
+const A_LIGHT     = '#dedbd2';
+const A_SKIN      = '#f7e1d7';
+const A_SKIN_SH   = '#e6b9a8';   // derived: deeper peach (shading)
+const A_LEATHER   = '#b0c4b1';   // sage green (bow/leather/quiver)
+const A_LEATHER_D = '#7c987d';   // derived: darker sage (shadows)
+const A_RED       = '#c75c70';   // derived: deep rose accent (lips/fletching/ribbons)
+const A_OL        = '#1f2a2b';   // outline: very dark slate-black
 
 // Self-contained wooden arrow, oriented along `ang`. Travels along local +x.
 // Used both by the in-flight projectile renderer (renderer.js -> drawArrow)
@@ -2122,12 +2125,12 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
 
-  // Motion-blur streak (semi-transparent white tapering line behind butt).
+  // Motion-blur streak (semi-transparent cream tapering line behind butt).
   if (opts.motion) {
     const tailL = tile * 1.25;
     const grad = ctx.createLinearGradient(fX - tailL, 0, fX, 0);
-    grad.addColorStop(0, `rgba(237,246,249,0)`);
-    grad.addColorStop(1, `rgba(237,246,249,${0.55 * alpha})`);
+    grad.addColorStop(0, `rgba(222,219,210,0)`);
+    grad.addColorStop(1, `rgba(222,219,210,${0.55 * alpha})`);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(fX - tailL, -W * 0.18);
@@ -2138,14 +2141,14 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
     ctx.fill();
   }
 
-  // Wooden shaft (terracotta mid + darker underside cel-shade).
-  ctx.fillStyle = `rgba(226,149,120,${alpha})`;
+  // Wooden shaft (sage mid + darker underside cel-shade).
+  ctx.fillStyle = `rgba(176,196,177,${alpha})`;
   ctx.fillRect(fX, -W * 0.5, L, W);
-  ctx.fillStyle = `rgba(184,106,77,${0.95 * alpha})`;
+  ctx.fillStyle = `rgba(124,152,125,${0.95 * alpha})`;
   ctx.fillRect(fX, W * 0.10, L, W * 0.40);
-  ctx.fillStyle = `rgba(237,246,249,${0.55 * alpha})`;
+  ctx.fillStyle = `rgba(222,219,210,${0.55 * alpha})`;
   ctx.fillRect(fX, -W * 0.45, L, W * 0.12);
-  ctx.strokeStyle = `rgba(10,44,47,${alpha})`;
+  ctx.strokeStyle = `rgba(31,42,43,${alpha})`;
   ctx.lineWidth = Math.max(1, tile * 0.020);
   ctx.strokeRect(fX, -W * 0.5, L, W);
 
@@ -2159,11 +2162,11 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
   ctx.lineTo(tipBase, tipW * 0.5);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = `rgba(10,44,47,${alpha})`;
+  ctx.strokeStyle = `rgba(31,42,43,${alpha})`;
   ctx.lineWidth = Math.max(1, tile * 0.022);
   ctx.stroke();
   // Steel highlight along the upper edge of the head.
-  ctx.fillStyle = `rgba(237,246,249,${0.85 * alpha})`;
+  ctx.fillStyle = `rgba(222,219,210,${0.85 * alpha})`;
   ctx.beginPath();
   ctx.moveTo(tipBase + tile * 0.01, -tipW * 0.42);
   ctx.lineTo(tipTip - tile * 0.02, -tipW * 0.06);
@@ -2171,25 +2174,25 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
   ctx.closePath();
   ctx.fill();
   // Tiny dark socket where the head meets the shaft.
-  ctx.fillStyle = `rgba(10,44,47,${0.80 * alpha})`;
+  ctx.fillStyle = `rgba(31,42,43,${0.80 * alpha})`;
   ctx.fillRect(tipBase - tile * 0.015, -W * 0.55, tile * 0.030, W * 1.10);
 
-  // Fletching — two/three feathers at the butt (cream top, red bottom, +
+  // Fletching — two/three feathers at the butt (pink top, deep-rose bottom,
   // a small mid feather peeking when viewed in profile).
-  // Top feather (cream).
-  ctx.fillStyle = `rgba(237,246,249,${alpha})`;
+  // Top feather (pink).
+  ctx.fillStyle = `rgba(237,175,184,${alpha})`;
   ctx.beginPath();
   ctx.moveTo(fX + tile * 0.05, -W * 0.30);
   ctx.lineTo(fX - flL, -flW * 0.55);
   ctx.lineTo(fX - flL * 0.20, -flW * 0.05);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = `rgba(10,44,47,${alpha})`;
+  ctx.strokeStyle = `rgba(31,42,43,${alpha})`;
   ctx.lineWidth = Math.max(1, tile * 0.016);
   ctx.stroke();
-  // Mid feather (small terracotta sliver, only visible when viewed at this
-  // angle — gives the arrow a 3-feather impression in side profile).
-  ctx.fillStyle = `rgba(184,106,77,${0.95 * alpha})`;
+  // Mid feather (small darker sage sliver, only visible at this angle
+  // — gives the arrow a 3-feather impression in side profile).
+  ctx.fillStyle = `rgba(124,152,125,${0.95 * alpha})`;
   ctx.beginPath();
   ctx.moveTo(fX + tile * 0.04, 0);
   ctx.lineTo(fX - flL * 0.85, 0);
@@ -2197,8 +2200,8 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  // Bottom feather (red).
-  ctx.fillStyle = `rgba(188,71,73,${alpha})`;
+  // Bottom feather (deep rose).
+  ctx.fillStyle = `rgba(199,92,112,${alpha})`;
   ctx.beginPath();
   ctx.moveTo(fX + tile * 0.05, W * 0.30);
   ctx.lineTo(fX - flL, flW * 0.55);
@@ -2208,9 +2211,9 @@ export function drawArrow(ctx, x, y, ang, tile, opts = {}) {
   ctx.stroke();
 
   // Nock at the very back (small dark notch).
-  ctx.fillStyle = `rgba(10,44,47,${alpha})`;
+  ctx.fillStyle = `rgba(31,42,43,${alpha})`;
   ctx.fillRect(fX - tile * 0.02, -W * 0.45, tile * 0.04, W * 0.90);
-  ctx.fillStyle = `rgba(237,246,249,${0.6 * alpha})`;
+  ctx.fillStyle = `rgba(222,219,210,${0.6 * alpha})`;
   ctx.fillRect(fX - tile * 0.015, -W * 0.20, tile * 0.030, W * 0.10);
 
   ctx.restore();
@@ -2276,21 +2279,22 @@ export function drawArcher(ctx, gx, gy, tile, p) {
   ctx.ellipse(gx + sc * 0.16, gy + sc * 0.04, shR, shR * 0.40, 0, 0, TAU);
   ctx.fill();
 
-  // Spawn rune ring — teal-tinted regardless of team, with cream sparkles
-  // (a "hooded-ranger" silvery ring rather than the Knight's team-color one).
+  // Spawn rune ring — pink-tinted regardless of team, with cream sparkles
+  // (a "rose-ranger" ring matching the dominant hood color rather than the
+  // Knight's team-color one).
   if (p.spawnF < 1) {
     const sf = p.spawnF, inv = 1 - sf;
-    ctx.strokeStyle = `rgba(0,109,119,${0.92 * inv})`;
+    ctx.strokeStyle = `rgba(237,175,184,${0.92 * inv})`;
     ctx.lineWidth = 2.6;
     ctx.beginPath();
     ctx.ellipse(gx, gy, sc * (0.86 + sf * 0.86), sc * 0.34 * (0.86 + sf * 0.86), 0, 0, TAU);
     ctx.stroke();
-    ctx.strokeStyle = `rgba(237,246,249,${0.75 * inv})`;
+    ctx.strokeStyle = `rgba(222,219,210,${0.75 * inv})`;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.ellipse(gx, gy, sc * (0.66 + sf * 0.66), sc * 0.26 * (0.66 + sf * 0.66), 0, 0, TAU);
     ctx.stroke();
-    ctx.fillStyle = `rgba(237,246,249,${0.95 * inv})`;
+    ctx.fillStyle = `rgba(222,219,210,${0.95 * inv})`;
     for (let i = 0; i < 4; i++) {
       const ang = (i / 4) * TAU + sf * 0.6;
       const rx = sc * (0.82 + sf * 0.82), ry = sc * 0.30 * (0.82 + sf * 0.82);
@@ -2353,7 +2357,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     ctx.quadraticCurveTo(0.34 * sc, bowL * 0.50, 0.04 * sc, bowL);
     ctx.stroke();
     // Cream wood-grain highlight along the inside (riser-facing) edge.
-    ctx.strokeStyle = `rgba(237,246,249,0.55)`;
+    ctx.strokeStyle = `rgba(222,219,210,0.55)`;
     ctx.lineWidth = 0.020 * sc;
     ctx.beginPath();
     ctx.moveTo(0.01 * sc, -0.06 * sc);
@@ -2410,7 +2414,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     }
     // Release puff at the grip on strike.
     if (releasePop > 0.05) {
-      ctx.fillStyle = `rgba(237,246,249,${0.85 * releasePop})`;
+      ctx.fillStyle = `rgba(222,219,210,${0.85 * releasePop})`;
       ctx.beginPath();
       ctx.arc(0.10 * sc, 0, 0.28 * sc * releasePop, 0, TAU);
       ctx.fill();
@@ -2422,7 +2426,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     // Subtle bow oscillation flash near the limb tips just after release.
     if (strikePhase > 0 && recoverPhase < 0.6) {
       const osc = Math.sin((1 - recoverPhase) * 18) * (1 - recoverPhase) * 0.04 * sc;
-      ctx.strokeStyle = `rgba(237,246,249,${0.35 * (1 - recoverPhase)})`;
+      ctx.strokeStyle = `rgba(222,219,210,${0.35 * (1 - recoverPhase)})`;
       ctx.lineWidth = 0.018 * sc;
       ctx.beginPath();
       ctx.moveTo(0.04 * sc + osc, -bowL * 0.94);
@@ -2444,7 +2448,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     rr(ctx, cx + w * 0.05, cy - h * 0.45, w * 0.40, h * 0.90, w * 0.20);
     ctx.fill();
     // Cream specular highlight along the left edge.
-    ctx.fillStyle = `rgba(237,246,249,0.55)`;
+    ctx.fillStyle = `rgba(222,219,210,0.55)`;
     rr(ctx, cx - w * 0.42, cy - h * 0.40, w * 0.18, h * 0.80, w * 0.10);
     ctx.fill();
     // Leather strap rings.
@@ -2592,120 +2596,71 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     ctx.stroke();
   };
 
-  // Inner-hood face shadow that softly darkens the upper face. Used in side
-  // and front views right before drawing the human eyes. Lightened from the
-  // older magical-archer version so the warm skin tone reads through.
-  const drawFaceShadow = (hx, side) => {
-    ctx.fillStyle = `rgba(40,30,30,0.30)`;
-    if (side) {
-      ctx.beginPath();
-      ctx.moveTo(hx + 0.06 * sc, headY - 0.02 * sc);
-      ctx.quadraticCurveTo(hx + 0.30 * sc, headY + 0.04 * sc,
-                           hx + 0.30 * sc, headY + 0.12 * sc);
-      ctx.lineTo(hx + 0.10 * sc, headY + 0.12 * sc);
-      ctx.quadraticCurveTo(hx + 0.04 * sc, headY + 0.04 * sc,
-                           hx + 0.06 * sc, headY - 0.02 * sc);
-      ctx.closePath();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(hx - 0.22 * sc, headY - 0.02 * sc);
-      ctx.quadraticCurveTo(hx, headY - 0.14 * sc,
-                           hx + 0.22 * sc, headY - 0.02 * sc);
-      ctx.lineTo(hx + 0.20 * sc, headY + 0.10 * sc);
-      ctx.quadraticCurveTo(hx, headY + 0.14 * sc, hx - 0.20 * sc, headY + 0.10 * sc);
-      ctx.closePath();
-    }
-    ctx.fill();
-  };
-
-  // Human eye — small almond white sclera, dark iris/pupil with a tiny
-  // catchlight, soft eyelash arc above for a feminine read. Blink collapses
-  // the eye to a thin lash line so the rig still feels alive but human.
-  const eyeOpen = () => (blinking ? 0 : 1) - p.flash * 0.0;
-  const drawEyesFront = (hx) => {
-    const o = eyeOpen();
-    for (const dx of [-0.10, 0.10]) {
-      const ex = hx + dx * sc, ey = headY + 0.08 * sc;
-      // upper lash line (closed-eye fallback)
-      ctx.strokeStyle = A_OL;
-      ctx.lineWidth = 0.020 * sc;
-      ctx.beginPath();
-      ctx.moveTo(ex - 0.055 * sc, ey - 0.002 * sc);
-      ctx.quadraticCurveTo(ex, ey - 0.038 * sc, ex + 0.055 * sc, ey - 0.002 * sc);
-      ctx.stroke();
-      if (o > 0.05) {
-        // sclera
-        ctx.fillStyle = `rgba(245,238,232,${o})`;
-        ctx.beginPath();
-        ctx.ellipse(ex, ey + 0.006 * sc, 0.050 * sc, 0.028 * sc, 0, 0, TAU);
-        ctx.fill();
-        // brown iris
-        ctx.fillStyle = `rgba(78,52,32,${o})`;
-        ctx.beginPath();
-        ctx.arc(ex, ey + 0.010 * sc, 0.025 * sc, 0, TAU);
-        ctx.fill();
-        // catchlight
-        ctx.fillStyle = `rgba(255,255,255,${o})`;
-        ctx.beginPath();
-        ctx.arc(ex + 0.010 * sc, ey + 0.002 * sc, 0.010 * sc, 0, TAU);
-        ctx.fill();
-      }
-      // brow above
-      ctx.strokeStyle = `rgba(80,55,40,0.85)`;
-      ctx.lineWidth = 0.018 * sc;
-      ctx.beginPath();
-      ctx.moveTo(ex - 0.05 * sc, ey - 0.07 * sc);
-      ctx.quadraticCurveTo(ex, ey - 0.090 * sc, ex + 0.05 * sc, ey - 0.07 * sc);
-      ctx.stroke();
-    }
-  };
-
-  // Skin patch — visible face inside the hood. Expanded from the older
-  // "just-nose-chin" sliver so the eye/cheek area also reads as human skin.
-  const drawSkinFront = (hx) => {
-    // Wider face oval — visible upper face (eyes/cheeks) + lower face (lips/chin).
+  // Chibi face — drawn as one unit inside the hood opening. At this scale a
+  // realistic face turns to mush, so we use the classic chibi vocabulary:
+  // a round skin egg, two dark dot eyes with a single tiny catchlight, two
+  // soft pink blush cheeks, and a small rose smile arc. The skin oval is
+  // sized to sit cleanly inside the hood's dark interior cup so the dark
+  // cup reads as the hood's inner shadow rather than as a black halo.
+  const drawFace = (hx) => {
+    // 1. Skin egg.
     ctx.fillStyle = A_SKIN;
     ctx.beginPath();
-    ctx.moveTo(hx - 0.24 * sc, headY - 0.06 * sc);
-    ctx.quadraticCurveTo(hx, headY - 0.12 * sc, hx + 0.24 * sc, headY - 0.06 * sc);
-    ctx.lineTo(hx + 0.20 * sc, headY + 0.24 * sc);
-    ctx.quadraticCurveTo(hx, headY + 0.36 * sc, hx - 0.20 * sc, headY + 0.24 * sc);
-    ctx.closePath();
+    ctx.ellipse(hx, headY + 0.06 * sc, 0.21 * sc, 0.18 * sc, 0, 0, TAU);
     ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
-    // Cheek blush, both sides.
-    ctx.fillStyle = `rgba(232,168,155,0.65)`;
+    ctx.strokeStyle = A_OL;
+    ctx.lineWidth = 0.014 * sc;
+    ctx.stroke();
+
+    // 2. Cheek blush — soft pink ovals just under the eyes.
+    ctx.fillStyle = `rgba(220,135,150,0.55)`;
+    for (const sideI of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(hx + sideI * 0.125 * sc, headY + 0.11 * sc,
+                  0.030 * sc, 0.020 * sc, 0, 0, TAU);
+      ctx.fill();
+    }
+
+    // 3. Eyes — small dark vertical ovals with a single tiny catchlight.
+    //    Blink collapses to a short flat lash line.
+    const o = blinking ? 0 : 1;
+    for (const sideI of [-1, 1]) {
+      const ex = hx + sideI * 0.1 * sc;
+      const ey = headY + 0.05 * sc;
+      if (o > 0.05) {
+        ctx.fillStyle = A_OL;
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, 0.05 * sc, 0.07 * sc, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,0.95)`;
+        ctx.beginPath();
+        ctx.arc(ex + 0.010 * sc, ey - 0.015 * sc, 0.010 * sc, 0, TAU);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = A_OL;
+        ctx.lineWidth = 0.018 * sc;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(ex - 0.032 * sc, ey);
+        ctx.lineTo(ex + 0.032 * sc, ey);
+        ctx.stroke();
+      }
+    }
+
+    // 4. Mouth — a small deep-rose smile arc.
+    ctx.strokeStyle = A_RED;
+    ctx.lineWidth = 0.018 * sc;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.ellipse(hx - 0.14 * sc, headY + 0.16 * sc, 0.055 * sc, 0.035 * sc, 0, 0, TAU);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(hx + 0.14 * sc, headY + 0.16 * sc, 0.055 * sc, 0.035 * sc, 0, 0, TAU);
-    ctx.fill();
-    // Nose — soft small triangle shadow.
-    ctx.fillStyle = A_SKIN_SH;
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.025 * sc, headY + 0.14 * sc);
-    ctx.lineTo(hx + 0.025 * sc, headY + 0.14 * sc);
-    ctx.lineTo(hx, headY + 0.22 * sc);
-    ctx.closePath();
-    ctx.fill();
-    // Lips — softer feminine red ellipse.
-    ctx.fillStyle = A_RED;
-    ctx.beginPath();
-    ctx.ellipse(hx, headY + 0.27 * sc, 0.075 * sc, 0.022 * sc, 0, 0, TAU);
-    ctx.fill();
-    // Subtle lip-shine highlight.
-    ctx.fillStyle = `rgba(255,220,210,0.65)`;
-    ctx.beginPath();
-    ctx.ellipse(hx, headY + 0.265 * sc, 0.030 * sc, 0.007 * sc, 0, 0, TAU);
-    ctx.fill();
+    ctx.arc(hx, headY + 0.14 * sc, 0.030 * sc, 0.30, Math.PI - 0.30);
+    ctx.stroke();
   };
 
   if (p.view === 'front') {
     const sway = Math.sin(p.gait * TAU) * p.moving * 0.05 * sc;
     ctx.translate(sway, 0);
 
-    // Short flared dress side panels (dark teal back / mint front trim).
+    // Short flared dress side panels (dark slate back / pink front trim).
     // Ends just above the knee so bare legs read clearly below.
     {
       const flR = Math.sin(tC) * (0.05 + p.moving * 0.10) * sc;
@@ -2784,7 +2739,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
       // soft shadow down the outer side
-      ctx.fillStyle = `rgba(232,168,155,0.55)`;
+      ctx.fillStyle = `rgba(230,185,168,0.55)`;
       capsule(ctx, x + side * 0.05 * sc, hipY + 0.16 * sc,
                    x + side * 0.05 * sc, footPt - 0.40 * sc, 0.035 * sc);
       ctx.fill();
@@ -2848,7 +2803,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
     ctx.fillStyle = tgF;
     ctx.fill();
     // right-side shadow band
-    ctx.fillStyle = `rgba(0,79,87,0.30)`;
+    ctx.fillStyle = `rgba(47,56,57,0.30)`;
     ctx.beginPath();
     ctx.moveTo(0.40 * sc, shoY);
     ctx.quadraticCurveTo(0.50 * sc, (shoY + hipY) * 0.5, 0.38 * sc, hipY);
@@ -2915,7 +2870,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
       ctx.fill();
       ctx.stroke();
       // bow knot
-      ctx.fillStyle = '#9a3539';
+      ctx.fillStyle = '#a04458';
       ctx.beginPath();
       ctx.arc(0, hipY + 0.04 * sc, 0.045 * sc, 0, TAU);
       ctx.fill();
@@ -3044,18 +2999,18 @@ export function drawArcher(ctx, gx, gy, tile, p) {
       ctx.scale(HEAD_S, HEAD_S);
       ctx.translate(0, -pY);
       drawHoodFront(hxF);
-      drawFaceShadow(hxF, false);
-      drawSkinFront(hxF);
-      drawEyesFront(hxF);
-      // Two symmetric peach-blonde bangs peeking from under the hood.
-      ctx.fillStyle = A_LEATHER;
+      drawFace(hxF);
+      // Small strawberry-blonde temple tufts peeking from under the hood —
+      // a warm rose-tan that doesn't clash with the pink hood or sage bow.
+      // Tucked outside the face egg so they don't crowd the eyes.
+      ctx.fillStyle = '#d8a59c';
       for (const side of [-1, 1]) {
         ctx.beginPath();
-        ctx.moveTo(hxF + side * 0.12 * sc, headY - 0.02 * sc);
-        ctx.quadraticCurveTo(hxF + side * 0.22 * sc, headY + 0.08 * sc,
-                             hxF + side * 0.14 * sc, headY + 0.22 * sc);
-        ctx.quadraticCurveTo(hxF + side * 0.10 * sc, headY + 0.10 * sc,
-                             hxF + side * 0.08 * sc, headY - 0.02 * sc);
+        ctx.moveTo(hxF + side * 0.18 * sc, headY - 0.10 * sc);
+        ctx.quadraticCurveTo(hxF + side * 0.24 * sc, headY + 0.02 * sc,
+                             hxF + side * 0.20 * sc, headY + 0.14 * sc);
+        ctx.quadraticCurveTo(hxF + side * 0.17 * sc, headY + 0.04 * sc,
+                             hxF + side * 0.16 * sc, headY - 0.10 * sc);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.45; ctx.stroke();
@@ -3080,7 +3035,7 @@ export function drawArcher(ctx, gx, gy, tile, p) {
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.85; ctx.stroke();
       // subtle peach shadow stripe
-      ctx.fillStyle = `rgba(232,168,155,0.55)`;
+      ctx.fillStyle = `rgba(230,185,168,0.55)`;
       capsule(ctx, x - side * 0.04 * sc, hipY + 0.16 * sc,
                    x - side * 0.04 * sc, footPt - 0.40 * sc, 0.035 * sc);
       ctx.fill();
@@ -3237,7 +3192,7 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
   // overlapping G_DARK / G_RED / G_CREAM names at module scope) ──────────
   // User-supplied 5-color core:
   //   #386641 forest green — skin shadow, dagger handle wrap, sash shadow,
-  //                          outline (darkest of the five, doubles as ink)
+  //                          inner stitching/lacing details
   //   #6a994e mid green    — skin body/arms/face base, leaf-green cloth fold
   //   #a7c957 bright lime  — skin highlight (cheek/forehead/ear ridges),
   //                          inner ear, blade highlight, pommel
@@ -3246,9 +3201,14 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
   //   #bc4749 rust red     — eye irises, headband/bandana, dagger drips,
   //                          tongue tip
   // All shading/half-tones come from rgba() of these five base colors — no
-  // new hues are introduced. #386641 doubles as the outline ink so the line
-  // work reads as "deep mossy" rather than pure black.
+  // new hues are introduced. The silhouette OUTLINE uses G_INK, a very dark
+  // forest-green-black that matches the near-black outline convention used by
+  // every other unit (Knight #000000, Giant #003049, Archer #0a2c2f, Minion
+  // #0d1b2a, Musketeer #011a26) so the goblin reads with the same heavy
+  // cartoon borderline. G_DARK is reserved for inner mossy ink details
+  // (stitching, lacing, sash, dagger wrap) where the "deep mossy" feel works.
   const G_DARK  = '#386641';
+  const G_INK   = '#0a1d10';
   const G_MID   = '#6a994e';
   const G_LIME  = '#a7c957';
   const G_CREAM = '#f2e8cf';
@@ -3356,7 +3316,7 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
 
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
-  const OL = G_DARK;
+  const OL = G_INK;
   const OW = OUTLINE_PX_PER_TILE * tile;
 
   // ── helper: the dagger ─────────────────────────────────────────────────
@@ -4027,13 +3987,13 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
     ctx.fillStyle = G_MID;
     rr(ctx, -0.36 * sc, hipY + 0.04 * sc, 0.72 * sc, 0.040 * sc, 0.015 * sc);
     ctx.fill();
-    // Dagger pommel hanging at the (viewer-right) hip — the back view shows
-    // it tucked at the waist.
-    {
+    // Sheathed dagger pommel at the (viewer-right) hip — only visible at rest.
+    // While the goblin is actually swinging, the live dagger is in its hand
+    // (drawn below), so we hide the sheathed silhouette to avoid two daggers.
+    if (p.atk === 0) {
       ctx.save();
       ctx.translate(0.24 * sc, hipY + 0.04 * sc);
       ctx.rotate(0.30);
-      // small sheathed dagger silhouette (just the handle showing above sash)
       ctx.fillStyle = G_DARK;
       rr(ctx, -0.04 * sc, -0.20 * sc, 0.10 * sc, 0.20 * sc, 0.020 * sc);
       ctx.fill();
@@ -4043,7 +4003,6 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
       ctx.arc(0.01 * sc, -0.22 * sc, 0.040 * sc, 0, TAU);
       ctx.fill();
       ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.4; ctx.stroke();
-      // Crossguard sliver.
       ctx.fillStyle = G_LIME;
       rr(ctx, -0.06 * sc, -0.03 * sc, 0.14 * sc, 0.040 * sc, 0.012 * sc);
       ctx.fill();
@@ -4051,26 +4010,109 @@ export function drawGoblin(ctx, gx, gy, tile, p) {
       ctx.restore();
     }
 
-    // Off arms hanging at sides (idle pose; both visible from behind).
+    // ── arms + dagger (back view) ────────────────────────────────────────
+    // Off-hand (viewer-left) hangs at the side. The dagger arm (viewer-right)
+    // mirrors the front-view three-phase swing: rest → wind-up (dagger
+    // raised high above the head, clearly visible) → strike (arc down and
+    // across the body) → recovery. The motion trail and strike spark also
+    // play so the swing reads at a glance even from behind.
     {
-      for (const side of [-1, 1]) {
-        const armShX = side * 0.30 * sc;
-        const armShY = shoY + 0.04 * sc;
-        const armHandX = side * 0.34 * sc;
-        const armHandY = hipY + 0.08 * sc;
-        ctx.fillStyle = G_MID;
-        capsule(ctx, armShX, armShY, armHandX, armHandY, 0.080 * sc);
-        ctx.fill();
-        ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
-        ctx.fillStyle = `rgba(56,102,65,0.45)`;
-        capsule(ctx, armShX + side * 0.02 * sc, armShY + 0.02 * sc,
-                     armHandX + side * 0.02 * sc, armHandY - 0.02 * sc, 0.030 * sc);
-        ctx.fill();
-        ctx.save();
-        ctx.translate(armHandX, armHandY);
-        drawHand();
-        ctx.restore();
-      }
+      const armShX = -0.30 * sc;
+      const armShY = shoY + 0.04 * sc;
+      const armHandX = -0.34 * sc;
+      const armHandY = hipY + 0.08 * sc;
+      ctx.fillStyle = G_MID;
+      capsule(ctx, armShX, armShY, armHandX, armHandY, 0.080 * sc);
+      ctx.fill();
+      ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
+      ctx.fillStyle = `rgba(56,102,65,0.45)`;
+      capsule(ctx, armShX - 0.02 * sc, armShY + 0.02 * sc,
+                   armHandX - 0.02 * sc, armHandY - 0.02 * sc, 0.030 * sc);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(armHandX, armHandY);
+      drawHand();
+      ctx.restore();
+    }
+
+    const dShXB = 0.30 * sc, dShYB = shoY + 0.04 * sc;
+    // Back-view angles: rest = arm down-out at right hip; wind-up = dagger
+    // raised straight up over the head (tip pokes well above the silhouette);
+    // strike = chop down-and-across past the body. Mirrors the Knight back
+    // view's overhead chop so the action reads from any camera angle.
+    const restAngB = 0.85;
+    const windAngB = -1.30;
+    const hitAngB  = 2.10;
+    let armAngB;
+    if (p.atk > 0) {
+      if (s < 0.30)       armAngB = lerp(restAngB, windAngB, easeOut(s / 0.30));
+      else if (s < 0.62)  armAngB = lerp(windAngB, hitAngB,  easeOut((s - 0.30) / 0.32));
+      else                armAngB = lerp(hitAngB,  restAngB, easeInOut((s - 0.62) / 0.38));
+    } else {
+      armAngB = restAngB;
+    }
+    const armLB = 0.44 * sc;
+    const dHandXB = dShXB + Math.cos(armAngB) * armLB;
+    const dHandYB = dShYB + Math.sin(armAngB) * armLB;
+
+    // Cream slash arc + red-tinted outer ring during the strike sweep.
+    if (swingPhase > 0.05 && p.atk > 0) {
+      const trailStart = lerp(windAngB, hitAngB,
+                              easeOut(Math.max(0, (s - 0.30) / 0.32 - 0.30)));
+      ctx.strokeStyle = `rgba(242,232,207,${0.40 * swingPhase})`;
+      ctx.lineWidth = 0.16 * sc;
+      ctx.beginPath();
+      ctx.arc(dShXB, dShYB, armLB + 0.28 * sc, trailStart, armAngB, false);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(188,71,73,${0.42 * swingPhase})`;
+      ctx.lineWidth = 0.06 * sc;
+      ctx.beginPath();
+      ctx.arc(dShXB, dShYB, armLB + 0.40 * sc, trailStart, armAngB, false);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = G_MID;
+    capsule(ctx, dShXB, dShYB, dHandXB, dHandYB, 0.090 * sc);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW; ctx.stroke();
+    ctx.fillStyle = `rgba(56,102,65,0.45)`;
+    capsule(ctx, dShXB + 0.02 * sc, dShYB + 0.02 * sc,
+                 dHandXB + 0.02 * sc, dHandYB - 0.02 * sc, 0.030 * sc);
+    ctx.fill();
+    // Wrist bandage.
+    ctx.save();
+    ctx.translate(dHandXB - Math.cos(armAngB) * 0.10 * sc,
+                  dHandYB - Math.sin(armAngB) * 0.10 * sc);
+    ctx.rotate(armAngB + Math.PI / 2);
+    ctx.fillStyle = G_CREAM;
+    rr(ctx, -0.10 * sc, -0.045 * sc, 0.20 * sc, 0.090 * sc, 0.028 * sc);
+    ctx.fill();
+    ctx.strokeStyle = OL; ctx.lineWidth = OW * 0.55; ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(dHandXB, dHandYB);
+    ctx.rotate(armAngB);
+    ctx.save();
+    ctx.rotate(-armAngB);
+    drawHand();
+    ctx.restore();
+    drawDagger(strikePop);
+    ctx.restore();
+
+    // Strike spark at the dagger tip while it sweeps past the head.
+    if (strikePop > 0.10) {
+      const tipX = dHandXB + Math.cos(armAngB) * 0.46 * sc;
+      const tipY = dHandYB + Math.sin(armAngB) * 0.46 * sc;
+      ctx.fillStyle = `rgba(242,232,207,${0.85 * strikePop})`;
+      const rs = 0.14 * sc * strikePop;
+      ctx.beginPath();
+      ctx.moveTo(tipX - rs, tipY);
+      ctx.lineTo(tipX, tipY - rs);
+      ctx.lineTo(tipX + rs, tipY);
+      ctx.lineTo(tipX, tipY + rs);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // HEAD from behind.
@@ -5765,7 +5807,7 @@ export function drawMusketeer(ctx, gx, gy, tile, p) {
       ctx.fill();
       ctx.fillStyle = '#4e3420';
       ctx.beginPath();
-      ctx.arc(ex, ey + 0.012 * sc, 0.030 * sc, 0, TAU);
+      ctx.arc(ex, ey + 0.012 * sc, 0.050 * sc, 0, TAU);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
@@ -6642,7 +6684,7 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
     const psc = d.scale || 1;
     const T = tile * psc;
     const cx = sx(d.x), cy = sy(d.y) - T * 0.55;
-    // Archer poof uses a teal-tinted ring (matches its hooded-ranger palette),
+    // Archer poof uses a pink-tinted ring (matches its rose-ranger palette),
     // Goblin poof uses a mid-green ring (matches the leaf-goblin palette),
     // Minion poof uses a dark-navy ring (matches the bat-imp palette),
     // Musketeer poof uses a teal-blue ring (matches the heroine's palette),
@@ -6651,7 +6693,7 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
     const teamRgb = d.musketeer ? '33,158,188'
                   : (d.minion ? '27,38,59'
                   : (d.goblin ? '106,153,78'
-                  : (d.archer ? '0,109,119'
+                  : (d.archer ? '237,175,184'
                   : (d.cannon ? '124,130,142'
                   : (d.owner === 0 ? '20,33,61' : '252,163,17')))));
 
@@ -6980,13 +7022,14 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
           continue;
         }
         if (d.archer) {
-          // Archer-specific shards: mint cloth scraps, dark-teal hood
-          // fragments, snapped arrow shafts, and loose fletching feathers.
-          ctx.strokeStyle = `rgba(10,44,47,${0.85 * alpha})`;
+          // Archer-specific shards: pink cloth scraps, dark-slate hood
+          // fragments, snapped sage-wood arrow shafts, and loose pink/cream
+          // fletching feathers.
+          ctx.strokeStyle = `rgba(31,42,43,${0.85 * alpha})`;
           ctx.lineWidth = 1.1 * psc;
           if (sh.kind === 0) {
-            // mint cloak scrap
-            ctx.fillStyle = `rgba(131,197,190,${0.95 * alpha})`;
+            // pink cloak scrap
+            ctx.fillStyle = `rgba(237,175,184,${0.95 * alpha})`;
             ctx.beginPath();
             ctx.moveTo(-T * 0.10, -T * 0.05);
             ctx.lineTo(T * 0.10, -T * 0.06);
@@ -6994,11 +7037,11 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
             ctx.lineTo(-T * 0.12, T * 0.06);
             ctx.closePath();
             ctx.fill(); ctx.stroke();
-            ctx.fillStyle = `rgba(0,109,119,${0.85 * alpha})`;
+            ctx.fillStyle = `rgba(74,87,89,${0.85 * alpha})`;
             ctx.fillRect(-T * 0.10, T * 0.03, T * 0.20, T * 0.025);
           } else if (sh.kind === 1) {
-            // dark teal hood fragment
-            ctx.fillStyle = `rgba(0,109,119,${0.95 * alpha})`;
+            // dark slate hood fragment
+            ctx.fillStyle = `rgba(74,87,89,${0.95 * alpha})`;
             ctx.beginPath();
             ctx.moveTo(-T * 0.09, -T * 0.04);
             ctx.lineTo(T * 0.10, -T * 0.05);
@@ -7006,8 +7049,8 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
             ctx.closePath();
             ctx.fill(); ctx.stroke();
           } else if (sh.kind === 2) {
-            // snapped arrow shaft + tiny steel head
-            ctx.fillStyle = `rgba(226,149,120,${0.95 * alpha})`;
+            // snapped sage-wood arrow shaft + tiny steel head
+            ctx.fillStyle = `rgba(176,196,177,${0.95 * alpha})`;
             ctx.beginPath();
             ctx.rect(-T * 0.14, -T * 0.020, T * 0.24, T * 0.040);
             ctx.fill(); ctx.stroke();
@@ -7019,15 +7062,15 @@ export function drawDeathPoofs(ctx, sx, sy, tile) {
             ctx.closePath();
             ctx.fill(); ctx.stroke();
           } else {
-            // loose fletching feather (cream with red tip)
-            ctx.fillStyle = `rgba(237,246,249,${0.95 * alpha})`;
+            // loose fletching feather (cream with deep-rose tip)
+            ctx.fillStyle = `rgba(222,219,210,${0.95 * alpha})`;
             ctx.beginPath();
             ctx.moveTo(-T * 0.12, 0);
             ctx.quadraticCurveTo(0, -T * 0.07, T * 0.10, 0);
             ctx.quadraticCurveTo(0, T * 0.07, -T * 0.12, 0);
             ctx.closePath();
             ctx.fill(); ctx.stroke();
-            ctx.fillStyle = `rgba(188,71,73,${0.95 * alpha})`;
+            ctx.fillStyle = `rgba(199,92,112,${0.95 * alpha})`;
             ctx.beginPath();
             ctx.moveTo(T * 0.04, -T * 0.04);
             ctx.lineTo(T * 0.12, 0);
@@ -8691,6 +8734,96 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   const lowWallH   = merlonH * 0.50;
   const turretW    = W * (isKing ? 0.11 : 0.095);
   const turretH    = merlonH * (isKing ? 2.05 : 1.55);
+  // Brick grid (hoisted from the wall section so the damage params below can
+  // address bricks by (r,c) for missing-brick voids and crack anchors).
+  const cols = isKing ? 4 : 3;
+  const rows = isKing ? 4 : 3;
+  const bw   = wallW / cols;
+  const bh   = bodyH / rows;
+
+  // ── DAMAGE STATE (alive but losing HP) ─────────────────────────────────
+  // Visible battle damage is composed of independent severity ramps so the
+  // tower degrades gracefully instead of snapping between two looks:
+  //   dMinor  : 80% HP → 60% HP   hairline cracks at stress points
+  //   dMod    : 60% HP → 40% HP   first missing brick, mortar-following cracks
+  //   dHeavy  : 40% HP → 20% HP   chipped merlons + turret + flag tear + base rubble
+  //   dCrit   : 20% HP →  0% HP   leaning pole, broken door planks, smoke wisps
+  // Every per-feature decision is hash-stable via rand(NNNN+i) on the
+  // tower id, so the same wounded tower looks the same frame-to-frame.
+  const dmg     = 1 - hpFrac;
+  const dMinor  = clamp01((dmg - 0.20) / 0.20);
+  const dMod    = clamp01((dmg - 0.40) / 0.20);
+  const dHeavy  = clamp01((dmg - 0.60) / 0.20);
+  const dCrit   = clamp01((dmg - 0.80) / 0.20);
+  const damaged = dmg > 0.20;
+
+  // Missing bricks — pick a set of (r,c) cells to render as voids. Bias to
+  // rows 1..rows-1 so the gold trim band (which sits in row 0) isn't bisected
+  // by a hole. The interior brick of a stagger row that spills past the
+  // right edge (c==cols) is excluded via the c<cols check.
+  const missingBricks = new Set();
+  if (damaged) {
+    const wantMissing =
+        (dMod   > 0.30 ? 1 : 0) +
+        (dHeavy > 0.20 ? 1 : 0) +
+        (dHeavy > 0.85 ? 1 : 0) +
+        (dCrit  > 0.50 ? 1 : 0);
+    let placed = 0;
+    for (let i = 0; i < wantMissing * 4 && placed < wantMissing; i++) {
+      const r = 1 + Math.floor(rand(5000 + i) * (rows - 1));
+      const c = Math.floor(rand(5100 + i) * cols);
+      const key = r * 100 + c;
+      if (!missingBricks.has(key)) {
+        missingBricks.add(key);
+        placed++;
+      }
+    }
+  }
+
+  // Missing/broken merlons per parapet edge. Front parapet gets the most
+  // visible damage (camera-facing), back the least.
+  const pickMerlons = (mCount, ns, density) => {
+    const out = new Set();
+    const want = Math.min(mCount, Math.floor(density * mCount + 0.4));
+    let placed = 0;
+    for (let i = 0; i < want * 4 && placed < want; i++) {
+      const idx = 1 + Math.floor(rand(ns + i) * mCount);
+      if (!out.has(idx)) { out.add(idx); placed++; }
+    }
+    return out;
+  };
+  const merlonCntBack  = isKing ? 4 : 3;
+  const merlonCntSide  = isKing ? 3 : 2;
+  const merlonCntFront = isKing ? 4 : 3;
+  const missingMerlons = {
+    back:  pickMerlons(merlonCntBack,  5200, 0.10 * dMod + 0.30 * dHeavy + 0.35 * dCrit),
+    left:  pickMerlons(merlonCntSide,  5220, 0.10 * dMod + 0.30 * dHeavy + 0.35 * dCrit),
+    right: pickMerlons(merlonCntSide,  5240, 0.10 * dMod + 0.30 * dHeavy + 0.35 * dCrit),
+    front: pickMerlons(merlonCntFront, 5260, 0.15 * dMod + 0.40 * dHeavy + 0.50 * dCrit),
+  };
+
+  // Chipped corner turrets (broken upper section + jagged top edge). Front
+  // turrets chip first because they're closest to camera; back turrets only
+  // chip at critical damage.
+  // Order in the cornerSpots[] array below: 0=BL, 1=BR, 2=FL, 3=FR.
+  const chippedTurrets = [false, false, false, false];
+  {
+    const chipOrder = [2, 3, 0, 1];          // FL, FR, BL, BR
+    let n = 0;
+    if (dHeavy > 0.30) n = 1;
+    if (dHeavy > 0.85) n = 2;
+    if (dCrit  > 0.60) n = 3;
+    for (let i = 0; i < n; i++) chippedTurrets[chipOrder[i]] = true;
+  }
+
+  // Banner pole lean — gentle wobble at heavy damage, dramatic tilt when
+  // critical. Sign is stable per tower so the flag always leans the same way.
+  const poleLeanSign = rand(5300) > 0.5 ? 1 : -1;
+  const poleLean     = poleLeanSign * (0.10 * dHeavy + 0.32 * dCrit);
+
+  // Flag tear severity (0..1). At ≥ 0.3 the trailing swallow-tail is replaced
+  // by a jagged torn edge.
+  const flagTearSev  = clamp01(dHeavy * 0.85 + dCrit * 0.5);
 
   // Ground cast shadow at the tower's base
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -8736,11 +8869,9 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.fillRect(wallLeftX, wallBot - H * 0.18, wallW, H * 0.18);
   }
 
-  // Stone block grid (brick-stagger, per-block hashed tint)
-  const cols = isKing ? 4 : 3;
-  const rows = isKing ? 4 : 3;
-  const bw   = wallW / cols;
-  const bh   = bodyH / rows;
+  // Stone block grid (brick-stagger, per-block hashed tint).
+  // cols/rows/bw/bh are hoisted into the damage-params block above so the
+  // damage system can address bricks by (r,c) for void rendering.
   ctx.lineWidth = 1;
   ctx.strokeStyle = 'rgba(0,0,0,0.40)';
   for (let r = 0; r < rows; r++) {
@@ -8765,6 +8896,94 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
         ctx.moveTo(bx + bw, by);
         ctx.lineTo(bx + bw, by + bh);
       }
+      ctx.stroke();
+    }
+  }
+
+  // Missing-brick voids — knock-out holes punched through the wall where
+  // bricks have been smashed loose. Each void shows the dark interior of
+  // the keep (deep navy with a soft floor-light gradient), keeps two
+  // crumbled stone remnants at opposite corners so the silhouette doesn't
+  // read as a perfect rectangle, and piles a few rubble shards on the
+  // hole's floor. Drawn after the mortar grid but BEFORE the outer wall
+  // outline so the rectangular silhouette of the keep stays intact while
+  // the interior reads as broken.
+  if (missingBricks.size > 0) {
+    for (const key of missingBricks) {
+      const r = Math.floor(key / 100);
+      const c = key % 100;
+      const stagger = (r % 2) * bw * 0.5;
+      const bx0 = wallLeftX + c * bw - stagger;
+      const by0 = wallTop + r * bh;
+      const left  = Math.max(bx0, wallLeftX + 0.5);
+      const right = Math.min(bx0 + bw, wallLeftX + wallW - 0.5);
+      const top   = by0;
+      const bot   = by0 + bh;
+      const cwV   = right - left;
+      if (cwV <= 2) continue;
+      const seed = r * 7 + c * 13;
+      // 1. Dark recess interior
+      ctx.fillStyle = '#0a1322';
+      ctx.fillRect(left, top, cwV, bh);
+      {
+        const g = ctx.createLinearGradient(left, top, left, bot);
+        g.addColorStop(0,    'rgba(0,0,0,0.55)');
+        g.addColorStop(0.55, 'rgba(0,0,0,0.18)');
+        g.addColorStop(1,    'rgba(70,80,100,0.10)');
+        ctx.fillStyle = g;
+        ctx.fillRect(left, top, cwV, bh);
+      }
+      // 2. Stone remnants at TL + BR corners (crumbled brick edges)
+      const nubW1 = cwV * (0.18 + rand(5400 + seed) * 0.20);
+      const nubH1 = bh  * (0.20 + rand(5410 + seed) * 0.20);
+      ctx.fillStyle = LIGHT;
+      ctx.beginPath();
+      ctx.moveTo(left, top);
+      ctx.lineTo(left + nubW1, top);
+      ctx.lineTo(left, top + nubH1);
+      ctx.closePath();
+      ctx.fill();
+      // shading under the TL nub so it reads as 3D leftover stone
+      ctx.fillStyle = 'rgba(20,33,61,0.50)';
+      ctx.beginPath();
+      ctx.moveTo(left + nubW1, top);
+      ctx.lineTo(left + nubW1 * 0.55, top + nubH1 * 0.55);
+      ctx.lineTo(left, top + nubH1);
+      ctx.closePath();
+      ctx.fill();
+      const nubW2 = cwV * (0.16 + rand(5420 + seed) * 0.22);
+      const nubH2 = bh  * (0.18 + rand(5430 + seed) * 0.22);
+      ctx.fillStyle = LIGHT;
+      ctx.beginPath();
+      ctx.moveTo(right, bot);
+      ctx.lineTo(right - nubW2, bot);
+      ctx.lineTo(right, bot - nubH2);
+      ctx.closePath();
+      ctx.fill();
+      // 3. Rubble pile on the hole's floor
+      ctx.fillStyle = 'rgba(20,33,61,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(left + cwV * 0.5, bot - 1, cwV * 0.45, 2.4, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = LIGHT;
+      for (let k = 0; k < 3; k++) {
+        const rx = left + cwV * (0.20 + rand(5440 + k + seed) * 0.60);
+        const ry = bot - 1.5 - rand(5450 + k + seed) * 2.4;
+        const rs = 1.3 + rand(5460 + k + seed) * 1.6;
+        ctx.fillRect(rx - rs / 2, ry - rs / 2, rs, rs);
+      }
+      // 4. Jagged dark rim
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = 1.4;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(left, top + nubH1);
+      ctx.lineTo(left + nubW1, top);
+      ctx.lineTo(right, top);
+      ctx.lineTo(right, bot - nubH2);
+      ctx.lineTo(right - nubW2, bot);
+      ctx.lineTo(left, bot);
+      ctx.closePath();
       ctx.stroke();
     }
   }
@@ -8889,38 +9108,182 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     }
   }
 
-  // HP-driven cracks across the wall (at <50% HP)
-  if (hpFrac < 0.5) {
-    const sev  = 1 - hpFrac / 0.5;
-    const nCk  = Math.floor(2 + sev * 4);
-    ctx.strokeStyle = `rgba(0,0,0,${0.55 + sev * 0.35})`;
-    ctx.lineWidth = 1 + sev * 1.2;
-    for (let i = 0; i < nCk; i++) {
-      const sxp = wallLeftX + wallW * (0.12 + rand(800 + i) * 0.76);
-      const syp = wallTop + bodyH * (0.10 + rand(900 + i) * 0.55);
-      ctx.beginPath();
-      ctx.moveTo(sxp, syp);
-      let px2 = sxp, py2 = syp;
-      const segs = 3 + Math.floor(sev * 3);
-      for (let k = 0; k < segs; k++) {
-        const da  = (rand(1000 + i * 11 + k) - 0.5) * 1.2;
-        const len = W * (0.06 + rand(1100 + i * 11 + k) * 0.12);
-        const ang = Math.PI * 0.5 + da;
-        px2 += Math.cos(ang) * len;
-        py2 += Math.sin(ang) * len;
-        ctx.lineTo(px2, py2);
+  // ── BATTLE DAMAGE LAYER (scorch + cracks + door damage) ───────────────
+  // Painted after trim/door/arrow-slits so it covers every surface uniformly.
+  // Layer order within: scorch (under everything else so cracks still read)
+  // → structured cracks → door damage. All anchored to logical stress
+  // points (missing bricks, door frame corners, top edge between merlons)
+  // rather than random spots in the middle of solid wall.
+  if (damaged) {
+    // -- Scorch marks: dark smudges where impacts have burned the stone.
+    if (dMod > 0.40 || dHeavy > 0 || dCrit > 0) {
+      const scorchAnchors = [];
+      for (const key of missingBricks) {
+        const r = Math.floor(key / 100);
+        const c = key % 100;
+        const stagger = (r % 2) * bw * 0.5;
+        scorchAnchors.push([
+          wallLeftX + c * bw - stagger + bw * 0.5,
+          wallTop + r * bh + bh * 0.55,
+        ]);
       }
-      ctx.stroke();
+      const nExtra = (dHeavy > 0.40 ? 1 : 0)
+                   + (dHeavy > 0.85 ? 1 : 0)
+                   + (dCrit  > 0.50 ? 1 : 0);
+      for (let i = 0; i < nExtra; i++) {
+        scorchAnchors.push([
+          wallLeftX + wallW * (0.15 + rand(5700 + i) * 0.70),
+          wallTop + bodyH * (0.20 + rand(5710 + i) * 0.60),
+        ]);
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(wallLeftX, wallTop, wallW, bodyH);
+      ctx.clip();
+      for (let i = 0; i < scorchAnchors.length; i++) {
+        const [sx, sy] = scorchAnchors[i];
+        const sr = bh * (0.55 + rand(5720 + i) * 0.45);
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+        g.addColorStop(0,   'rgba(18,10,6,0.72)');
+        g.addColorStop(0.5, 'rgba(18,10,6,0.32)');
+        g.addColorStop(1,   'rgba(18,10,6,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, sr, sr * 0.74, 0, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
     }
-    if (hpFrac < 0.2) {
-      ctx.fillStyle = NAVYC;
-      for (let i = 0; i < 5; i++) {
-        const ph   = rand(1200 + i);
-        const fall = ((T * 0.55 + ph) % 1);
-        const bx2  = wallLeftX + wallW * (0.15 + rand(1300 + i) * 0.70);
-        const by2  = wallTop + bodyH * (0.20 + fall * 0.70);
-        const s    = 2 + rand(1400 + i) * 2;
-        ctx.fillRect(bx2 - s / 2, by2 - s / 2, s, s);
+
+    // -- Structured cracks: each rooted in a stress anchor (door frame
+    //    corner / top edge / missing brick) and walking primarily along
+    //    one mortar axis. Stored as polyline templates then rendered with
+    //    a dark outer stroke + faint highlighted inner ridge.
+    const cracks = [];
+    // (A) Hairline from a top corner of the door, angling up to the trim
+    if (showsFront && dMinor > 0.40) {
+      const sideSign = rand(5800) > 0.5 ? 1 : -1;
+      const ax = (sideSign > 0)
+        ? doorX + doorW + fr * 0.6
+        : doorX - fr * 0.6;
+      const ay = doorY + doorW * 0.5;
+      const pts = [[ax, ay]];
+      let px = ax, py = ay;
+      for (let k = 0; k < 4; k++) {
+        px += sideSign * (bw * 0.10 + rand(5810 + k) * bw * 0.14);
+        py -= bh * (0.18 + rand(5820 + k) * 0.22);
+        pts.push([px, py]);
+      }
+      cracks.push({ pts, w: 1.0 + dMinor * 0.6 });
+    }
+    // (B) Top-edge fissure: starts between two merlons, walks down past
+    //     the trim band.
+    if (dMod > 0.30) {
+      const u  = 0.25 + rand(5830) * 0.50;
+      const sx = wallLeftX + wallW * u;
+      const pts = [[sx, wallTop]];
+      let px = sx, py = wallTop;
+      const dir = rand(5840) > 0.5 ? 1 : -1;
+      for (let k = 0; k < 5; k++) {
+        px += (rand(5850 + k) - 0.5) * bw * 0.45 + dir * bw * 0.06;
+        py += bh * (0.20 + rand(5860 + k) * 0.22);
+        pts.push([px, py]);
+      }
+      cracks.push({ pts, w: 1.2 + dMod * 0.9 });
+    }
+    // (C) Spider arms radiating from a missing brick (heavy damage). Two
+    //     horizontal arms + one rising arm so the brick reads as a true
+    //     impact crater.
+    if (dHeavy > 0.50 && missingBricks.size > 0) {
+      const firstKey = [...missingBricks][0];
+      const r = Math.floor(firstKey / 100);
+      const c = firstKey % 100;
+      const stagger = (r % 2) * bw * 0.5;
+      const cxBr = wallLeftX + c * bw - stagger + bw * 0.5;
+      const cyBr = wallTop + r * bh + bh * 0.5;
+      const arms = [[1, 0, 0], [-1, 0, 1], [0, -1, 2]];
+      for (const [dx, dy, slot] of arms) {
+        const pts = [[cxBr + dx * bw * 0.45, cyBr + dy * bh * 0.45]];
+        let px = pts[0][0], py = pts[0][1];
+        const segCount = 3 + Math.floor(rand(5870 + slot) * 2);
+        for (let k = 0; k < segCount; k++) {
+          const lx = dx * (bw * 0.28 + rand(5880 + slot * 5 + k) * bw * 0.18)
+                   + (dy !== 0 ? (rand(5890 + slot * 5 + k) - 0.5) * bw * 0.22 : 0);
+          const ly = dy * (bh * 0.28 + rand(5900 + slot * 5 + k) * bh * 0.18)
+                   + (dx !== 0 ? (rand(5910 + slot * 5 + k) - 0.5) * bh * 0.22 : 0);
+          px += lx;
+          py += ly;
+          pts.push([px, py]);
+        }
+        cracks.push({ pts, w: 1.3 + dHeavy * 0.6 });
+      }
+    }
+    // (D) Dramatic near-full-height fissure (critical damage)
+    if (dCrit > 0.30) {
+      const u  = 0.30 + rand(5920) * 0.40;
+      const sx = wallLeftX + wallW * u;
+      const pts = [[sx, wallTop]];
+      let px = sx, py = wallTop;
+      const segs = 8;
+      const span = wallBot - wallTop - 4;
+      for (let k = 0; k < segs; k++) {
+        px += (rand(5930 + k) - 0.5) * bw * 0.55;
+        py += (span / segs) * (0.85 + rand(5940 + k) * 0.30);
+        pts.push([px, py]);
+      }
+      cracks.push({ pts, w: 1.8 + dCrit * 1.2 });
+    }
+    // Render cracks (clipped to wall rect so the strokes don't bleed onto
+    // the roof above or the ground line below).
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(wallLeftX, wallTop, wallW, bodyH);
+    ctx.clip();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const ck of cracks) {
+      const trace = () => {
+        ctx.beginPath();
+        for (let i = 0; i < ck.pts.length; i++) {
+          const [px, py] = ck.pts[i];
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+      };
+      ctx.strokeStyle = 'rgba(0,0,0,0.82)';
+      ctx.lineWidth   = ck.w;
+      trace(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+      ctx.lineWidth   = Math.max(0.5, ck.w * 0.32);
+      trace(); ctx.stroke();
+    }
+    ctx.restore();
+
+    // -- Broken door planks: jagged splits across the door, plus a knocked
+    //    out hole at the lower right when truly critical.
+    if (showsFront && dCrit > 0.20) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(doorX + doorW * 0.18, doorY + doorH * 0.22);
+      ctx.lineTo(doorX + doorW * 0.42, doorY + doorH * 0.55);
+      ctx.lineTo(doorX + doorW * 0.30, doorY + doorH * 0.92);
+      ctx.moveTo(doorX + doorW * 0.78, doorY + doorH * 0.32);
+      ctx.lineTo(doorX + doorW * 0.60, doorY + doorH * 0.70);
+      ctx.stroke();
+      if (dCrit > 0.55) {
+        ctx.fillStyle = '#06090f';
+        ctx.beginPath();
+        ctx.moveTo(doorX + doorW * 0.58, doorY + doorH * 0.62);
+        ctx.lineTo(doorX + doorW * 0.94, doorY + doorH * 0.55);
+        ctx.lineTo(doorX + doorW * 0.95, doorY + doorH * 0.96);
+        ctx.lineTo(doorX + doorW * 0.78, doorY + doorH * 0.92);
+        ctx.lineTo(doorX + doorW * 0.62, doorY + doorH * 0.96);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
       }
     }
   }
@@ -9113,7 +9476,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   // Painter order: BACK first (deepest), then sides, then FRONT (closest).
   // Each merlon stands straight UP in screen space regardless of which
   // edge it sits on — a minor cheat that reads cleanly at this scale.
-  const drawParapet = (sX, sY, eX, eY, mCount) => {
+  const drawParapet = (sX, sY, eX, eY, mCount, missing) => {
     // 1) Low wall ribbon: a thin parallelogram lifted lowWallH upward from
     //    the edge (top is parallel to the base edge, shifted up by lowWallH).
     ctx.fillStyle = LIGHT;
@@ -9145,13 +9508,61 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.stroke();
     // 2) Merlons spaced along the edge (excluding the two ends, which the
     //    corner turrets cover). Each merlon stands UP from the top of the
-    //    low wall ribbon (= edge - lowWallH).
+    //    low wall ribbon (= edge - lowWallH). When the (1-indexed) merlon
+    //    slot is present in `missing`, render a short broken stub with a
+    //    jagged top edge instead of the full block.
     for (let i = 1; i <= mCount; i++) {
       const u  = i / (mCount + 1);
       const bx = sX * (1 - u) + eX * u;
       const by = sY * (1 - u) + eY * u - lowWallH;
       const mW = merlonW;
       const mH = merlonH;
+      if (missing && missing.has(i)) {
+        // Broken merlon: short stub (30-55% height) with a jagged top edge
+        // and a small dark notch where the stone above has fallen away.
+        const stubH = mH * (0.30 + rand(5500 + i + Math.floor(bx)) * 0.25);
+        const top   = by - stubH;
+        const L     = bx - mW * 0.5;
+        const R     = bx + mW * 0.5;
+        // body
+        ctx.fillStyle = LIGHT;
+        ctx.beginPath();
+        ctx.moveTo(L, by);
+        ctx.lineTo(L, top + mH * 0.05);
+        ctx.lineTo(L + mW * 0.22, top - mH * 0.10);
+        ctx.lineTo(L + mW * 0.50, top + mH * 0.04);
+        ctx.lineTo(L + mW * 0.76, top - mH * 0.08);
+        ctx.lineTo(R, top + mH * 0.08);
+        ctx.lineTo(R, by);
+        ctx.closePath();
+        ctx.fill();
+        // right-side shadow
+        ctx.fillStyle = 'rgba(20,33,61,0.55)';
+        ctx.fillRect(bx + mW * 0.28, top + mH * 0.04, mW * 0.22, stubH - mH * 0.04);
+        // dark "missing chunk" silhouette above the stub
+        ctx.fillStyle = 'rgba(10,18,32,0.55)';
+        ctx.beginPath();
+        ctx.moveTo(L + mW * 0.22, top - mH * 0.10);
+        ctx.lineTo(L + mW * 0.50, top + mH * 0.04);
+        ctx.lineTo(L + mW * 0.76, top - mH * 0.08);
+        ctx.lineTo(L + mW * 0.50, top - mH * 0.30);
+        ctx.closePath();
+        ctx.fill();
+        // outline
+        ctx.strokeStyle = BLACK;
+        ctx.lineWidth = OW;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(L, by);
+        ctx.lineTo(L, top + mH * 0.05);
+        ctx.lineTo(L + mW * 0.22, top - mH * 0.10);
+        ctx.lineTo(L + mW * 0.50, top + mH * 0.04);
+        ctx.lineTo(L + mW * 0.76, top - mH * 0.08);
+        ctx.lineTo(R, top + mH * 0.08);
+        ctx.lineTo(R, by);
+        ctx.stroke();
+        continue;
+      }
       // body
       ctx.fillStyle = LIGHT;
       ctx.fillRect(bx - mW * 0.5, by - mH, mW, mH);
@@ -9168,65 +9579,102 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     }
   };
   // BACK parapet — deepest into the scene, drawn first
-  drawParapet(BLx, BLy, BRx, BRy, isKing ? 4 : 3);
+  drawParapet(BLx, BLy, BRx, BRy, merlonCntBack,  missingMerlons.back);
   // SIDE parapets (recede front→back; either order is fine, they don't overlap)
-  drawParapet(BLx, BLy, FLx, FLy, isKing ? 3 : 2);  // LEFT
-  drawParapet(BRx, BRy, FRx, FRy, isKing ? 3 : 2);  // RIGHT
+  drawParapet(BLx, BLy, FLx, FLy, merlonCntSide,  missingMerlons.left);   // LEFT
+  drawParapet(BRx, BRy, FRx, FRy, merlonCntSide,  missingMerlons.right);  // RIGHT
   // FRONT parapet — closest to camera, drawn last so its merlons overlap
   // anything behind them (back parapet, brazier flame stem, banner base).
-  drawParapet(FLx, FLy, FRx, FRy, isKing ? 4 : 3);
+  drawParapet(FLx, FLy, FRx, FRy, merlonCntFront, missingMerlons.front);
 
   // ── 5. CORNER TURRETS at the four roof corners ─────────────────────────
   // Taller blocks at the 4 corners cap each parapet's ends. King towers add
   // a gold conical spire on top of each turret.
   // Order: back corners first (deepest), then front (so the front turrets
   // cleanly cover any side-parapet pixels that intrude into their square).
+  // Each entry pairs a corner position with its chipped flag (precomputed
+  // in the damage block above). Front turrets chip first at heavy damage.
   const cornerSpots = [
-    [BLx, BLy], [BRx, BRy], [FLx, FLy], [FRx, FRy],
+    { x: BLx, y: BLy, chipped: chippedTurrets[0] }, // 0 = BL
+    { x: BRx, y: BRy, chipped: chippedTurrets[1] }, // 1 = BR
+    { x: FLx, y: FLy, chipped: chippedTurrets[2] }, // 2 = FL
+    { x: FRx, y: FRy, chipped: chippedTurrets[3] }, // 3 = FR
   ];
-  for (const [tx, ty] of cornerSpots) {
+  for (const sp of cornerSpots) {
+    const tx = sp.x, ty = sp.y;
+    // Chipped turrets render at 40-65% height with a jagged top edge in
+    // place of the spire/mini-crenels, plus a tiny rubble pile at the base.
+    const effH = sp.chipped
+      ? turretH * (0.40 + rand(5550 + Math.floor(tx * 0.7 + ty * 0.9)) * 0.25)
+      : turretH;
+    const top  = ty - effH;
+    const L    = tx - turretW * 0.5;
+    const R    = tx + turretW * 0.5;
     // body
     ctx.fillStyle = LIGHT;
-    ctx.fillRect(tx - turretW * 0.5, ty - turretH, turretW, turretH);
+    ctx.fillRect(L, top, turretW, effH);
     // right shadow (sells the boxy thickness of the turret)
     ctx.fillStyle = 'rgba(20,33,61,0.60)';
-    ctx.fillRect(tx + turretW * 0.26, ty - turretH, turretW * 0.24, turretH);
+    ctx.fillRect(tx + turretW * 0.26, top, turretW * 0.24, effH);
     // top-left lit edge
     ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    ctx.fillRect(tx - turretW * 0.5, ty - turretH, turretW * 0.46, Math.max(1, turretH * 0.10));
-    // a single horizontal block-line mid-way (a touch of stonework detail)
-    ctx.strokeStyle = 'rgba(0,0,0,0.32)';
-    ctx.lineWidth = 1.0;
-    ctx.beginPath();
-    ctx.moveTo(tx - turretW * 0.5, ty - turretH * 0.50);
-    ctx.lineTo(tx + turretW * 0.5, ty - turretH * 0.50);
-    ctx.stroke();
-    // outline
+    ctx.fillRect(L, top, turretW * 0.46, Math.max(1, effH * 0.10));
+    if (!sp.chipped) {
+      // a single horizontal block-line mid-way (touch of stonework detail)
+      ctx.strokeStyle = 'rgba(0,0,0,0.32)';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(L, top + effH * 0.50);
+      ctx.lineTo(R, top + effH * 0.50);
+      ctx.stroke();
+    }
     ctx.strokeStyle = BLACK;
     ctx.lineWidth = OW;
-    ctx.strokeRect(tx - turretW * 0.5, ty - turretH, turretW, turretH);
+    if (sp.chipped) {
+      // Jagged top edge replaces the rectangular outline. Bottom and side
+      // edges still trace cleanly so the turret reads as a broken stump.
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(L, ty);
+      ctx.lineTo(L, top + turretW * 0.08);
+      ctx.lineTo(L + turretW * 0.22, top + turretW * 0.24);
+      ctx.lineTo(L + turretW * 0.42, top - turretW * 0.06);
+      ctx.lineTo(L + turretW * 0.62, top + turretW * 0.18);
+      ctx.lineTo(L + turretW * 0.82, top - turretW * 0.02);
+      ctx.lineTo(R, top + turretW * 0.14);
+      ctx.lineTo(R, ty);
+      ctx.closePath();
+      ctx.stroke();
+      // tiny rubble shelf at the base of the broken turret
+      ctx.fillStyle = NAVYC;
+      ctx.beginPath();
+      ctx.ellipse(tx, ty + 1, turretW * 0.62, 2.0, 0, 0, TAU);
+      ctx.fill();
+      continue; // skip spire / mini-crenel cap on broken turrets
+    }
+    ctx.strokeRect(L, top, turretW, effH);
     if (isKing) {
       // gold conical spire on top
-      const tipY = ty - turretH - turretW * 0.80;
+      const tipY = top - turretW * 0.80;
       ctx.fillStyle = GOLDC;
       ctx.beginPath();
-      ctx.moveTo(tx - turretW * 0.52, ty - turretH);
-      ctx.lineTo(tx + turretW * 0.52, ty - turretH);
+      ctx.moveTo(tx - turretW * 0.52, top);
+      ctx.lineTo(tx + turretW * 0.52, top);
       ctx.lineTo(tx, tipY);
       ctx.closePath();
       ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       ctx.beginPath();
-      ctx.moveTo(tx - turretW * 0.52, ty - turretH);
+      ctx.moveTo(tx - turretW * 0.52, top);
       ctx.lineTo(tx, tipY);
-      ctx.lineTo(tx - turretW * 0.18, ty - turretH);
+      ctx.lineTo(tx - turretW * 0.18, top);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = BLACK;
       ctx.lineWidth = OW;
       ctx.beginPath();
-      ctx.moveTo(tx - turretW * 0.52, ty - turretH);
-      ctx.lineTo(tx + turretW * 0.52, ty - turretH);
+      ctx.moveTo(tx - turretW * 0.52, top);
+      ctx.lineTo(tx + turretW * 0.52, top);
       ctx.lineTo(tx, tipY);
       ctx.closePath();
       ctx.stroke();
@@ -9241,12 +9689,12 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     } else {
       // princess: two tiny mini-crenels on top of each turret
       for (let k = 0; k < 2; k++) {
-        const bxk = tx - turretW * 0.5 + (k * 0.55 + 0.05) * turretW;
+        const bxk = L + (k * 0.55 + 0.05) * turretW;
         ctx.fillStyle = LIGHT;
-        ctx.fillRect(bxk, ty - turretH - turretH * 0.16, turretW * 0.40, turretH * 0.16);
+        ctx.fillRect(bxk, top - turretH * 0.16, turretW * 0.40, turretH * 0.16);
         ctx.strokeStyle = BLACK;
         ctx.lineWidth = 1.0;
-        ctx.strokeRect(bxk, ty - turretH - turretH * 0.16, turretW * 0.40, turretH * 0.16);
+        ctx.strokeRect(bxk, top - turretH * 0.16, turretW * 0.40, turretH * 0.16);
       }
     }
   }
@@ -9257,10 +9705,21 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   let bannerTop = roofBackY - lowWallH - merlonH * 0.10;
 
   // ── Banner pole + fluttering team flag ──
+  // Pole + flag are wrapped in a rotation transform around the pole base
+  // so that battle damage can tilt the whole assembly without recomputing
+  // each point. `poleLean` was precomputed in the damage params block —
+  // 0 when pristine, gently tilting at heavy damage, dramatically askew
+  // when critical.
   const poleX    = cx + (isKing ? -W * 0.02 : 0);
   const poleBase = bannerTop;
   const poleH    = (isKing ? 1.55 : 1.15) * tile;
   const poleTop  = poleBase - poleH;
+  ctx.save();
+  if (poleLean !== 0) {
+    ctx.translate(poleX, poleBase);
+    ctx.rotate(poleLean);
+    ctx.translate(-poleX, -poleBase);
+  }
   ctx.lineCap = 'round';
   ctx.strokeStyle = NAVYC;
   ctx.lineWidth = isKing ? 3 : 2.4;
@@ -9287,6 +9746,9 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
 
   // Flag: swallow-tail, mid-frequency multi-sine flutter. Dormant king gets
   // reduced amplitude so the flag still subtly stirs but reads as "asleep".
+  // At ≥ 0.3 flagTearSev the swallow-tail trailing edge is replaced by a
+  // jagged torn silhouette (extra inward bite points along the trailing
+  // axis), giving the flag a "shredded from battle" read.
   const amp     = activated ? 1.0 : 0.30;
   const flagH   = poleH * 0.55;
   const flagW   = (isKing ? 1.65 : 1.30) * tile;
@@ -9303,18 +9765,41 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     topPts.push([poleX + offX, flagY0 + offY]);
     botPts.push([poleX + offX, flagY0 + flagH + offY * 0.85]);
   }
-  // swallow-tail: notch the trailing edge inward to a midpoint
+  // Trailing edge — either the pristine swallow-tail notch or, when torn,
+  // a jagged zigzag from the top corner down to the bottom corner with
+  // alternating inward bites. Path-build helper so the fill / outline /
+  // specular-clip all share the same silhouette.
   const tailMidY = (topPts[seg][1] + botPts[seg][1]) / 2;
+  const torn     = flagTearSev > 0.30;
+  const buildFlagPath = (target) => {
+    target.moveTo(topPts[0][0], topPts[0][1]);
+    for (let i = 1; i <= seg; i++) target.lineTo(topPts[i][0], topPts[i][1]);
+    if (torn) {
+      const tX = topPts[seg][0], tY = topPts[seg][1];
+      const bX = botPts[seg][0], bY = botPts[seg][1];
+      const tearD = flagW * (0.16 + flagTearSev * 0.22);
+      for (let k = 1; k <= 5; k++) {
+        const u  = k / 6;
+        const bX2 = tX * (1 - u) + bX * u;
+        const bY2 = tY * (1 - u) + bY * u;
+        const inward = (k % 2 === 0)
+          ? tearD * 0.30
+          : tearD * (0.75 + rand(6100 + k) * 0.40);
+        target.lineTo(bX2 - inward, bY2);
+      }
+    } else {
+      target.lineTo(topPts[seg][0] - flagW * 0.22, tailMidY);
+    }
+    for (let i = seg; i >= 0; i--) target.lineTo(botPts[i][0], botPts[i][1]);
+    target.closePath();
+  };
   ctx.fillStyle = team;
   ctx.beginPath();
-  ctx.moveTo(topPts[0][0], topPts[0][1]);
-  for (let i = 1; i <= seg; i++) ctx.lineTo(topPts[i][0], topPts[i][1]);
-  ctx.lineTo(topPts[seg][0] - flagW * 0.22, tailMidY);
-  for (let i = seg; i >= 0; i--) ctx.lineTo(botPts[i][0], botPts[i][1]);
-  ctx.closePath();
+  buildFlagPath(ctx);
   ctx.fill();
   ctx.strokeStyle = BLACK;
   ctx.lineWidth = OW;
+  ctx.lineJoin = 'round';
   ctx.stroke();
   // gold trim on the leading edge (against the pole)
   ctx.strokeStyle = GOLDC;
@@ -9326,11 +9811,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   // travelling white specular stripe, clipped to the flag shape
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(topPts[0][0], topPts[0][1]);
-  for (let i = 1; i <= seg; i++) ctx.lineTo(topPts[i][0], topPts[i][1]);
-  ctx.lineTo(topPts[seg][0] - flagW * 0.22, tailMidY);
-  for (let i = seg; i >= 0; i--) ctx.lineTo(botPts[i][0], botPts[i][1]);
-  ctx.closePath();
+  buildFlagPath(ctx);
   ctx.clip();
   const spx = poleX + ((Math.sin(T * 1.6 + id) + 1) * 0.5) * flagW;
   ctx.fillStyle = 'rgba(255,255,255,0.30)';
@@ -9342,6 +9823,7 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
+  ctx.restore(); // end pole-lean rotation
 
   // ── Wall-mounted lanterns either side of the door (front face only) ──
   // The back face has no door, so no lanterns — keeps the rear silhouette
@@ -9363,6 +9845,98 @@ export function drawTower(ctx, cx, cy, tile, t, opts = {}) {
     ctx.textAlign = 'center';
     ctx.strokeText('Zz', cx + W * 0.30, roofBackY - turretH - tile * 0.10 + sleepOff);
     ctx.fillText  ('Zz', cx + W * 0.30, roofBackY - turretH - tile * 0.10 + sleepOff);
+  }
+
+  // ── Base rubble pile (fallen masonry at the wall's foot) ───────────────
+  // Heavy damage spills broken stones in front of the wall — the natural
+  // landing spot for everything that fell off the merlons, turrets, and
+  // missing bricks above. Pile grows with damage; positioned in front of
+  // the door area so it reads as obstructing approach.
+  if (dHeavy > 0.20 || dCrit > 0) {
+    const pileSev = clamp01(dHeavy * 0.7 + dCrit * 0.6);
+    const pileW   = wallW * (0.32 + pileSev * 0.24);
+    const pileH   = bh    * (0.30 + pileSev * 0.22);
+    const pileCX  = cx + (rand(5980) - 0.5) * wallW * 0.25;
+    const pileBot = wallBot + 1;
+    // ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(pileCX, pileBot + 1, pileW * 0.55, pileH * 0.30, 0, 0, TAU);
+    ctx.fill();
+    // mound silhouette (dark navy base under the lit stone shards)
+    ctx.fillStyle = NAVYC;
+    ctx.beginPath();
+    ctx.moveTo(pileCX - pileW * 0.50, pileBot);
+    ctx.lineTo(pileCX - pileW * 0.44, pileBot - pileH * 0.55);
+    ctx.lineTo(pileCX - pileW * 0.14, pileBot - pileH * 0.95);
+    ctx.lineTo(pileCX + pileW * 0.16, pileBot - pileH * 0.82);
+    ctx.lineTo(pileCX + pileW * 0.46, pileBot - pileH * 0.42);
+    ctx.lineTo(pileCX + pileW * 0.50, pileBot);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    // crown highlight on the mound
+    ctx.fillStyle = LIGHT;
+    ctx.beginPath();
+    ctx.ellipse(pileCX - pileW * 0.05, pileBot - pileH * 0.75, pileW * 0.22, pileH * 0.18, 0, 0, TAU);
+    ctx.fill();
+    // individual stone chunks scattered on the pile
+    const nC = 5 + Math.floor(pileSev * 5);
+    for (let i = 0; i < nC; i++) {
+      const cxR = pileCX + (rand(5990 + i) - 0.5) * pileW * 0.92;
+      const cyR = pileBot - rand(6000 + i) * pileH * 0.90;
+      const sw  = bw * (0.18 + rand(6010 + i) * 0.20);
+      const sh  = sw * (0.55 + rand(6020 + i) * 0.40);
+      const rot = (rand(6030 + i) - 0.5) * 0.7;
+      ctx.save();
+      ctx.translate(cxR, cyR);
+      ctx.rotate(rot);
+      ctx.fillStyle = LIGHT;
+      ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
+      ctx.fillStyle = 'rgba(20,33,61,0.55)';
+      ctx.fillRect(sw / 2 - sw * 0.30, -sh / 2, sw * 0.30, sh);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(-sw / 2, -sh / 2, sw * 0.36, Math.max(1, sh * 0.18));
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-sw / 2, -sh / 2, sw, sh);
+      ctx.restore();
+    }
+    // a few loose pebbles on the ground around the pile
+    ctx.fillStyle = LIGHT;
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 4; i++) {
+      const pxP = pileCX + (rand(6040 + i) - 0.5) * pileW * 1.4;
+      const pyP = pileBot + 1 + rand(6050 + i) * 2;
+      const psP = 1.2 + rand(6060 + i) * 1.6;
+      ctx.fillRect(pxP - psP / 2, pyP - psP / 2, psP, psP);
+      ctx.strokeRect(pxP - psP / 2, pyP - psP / 2, psP, psP);
+    }
+  }
+
+  // ── Critical-damage smoke wisps rising off the wall ───────────────────
+  // Thin drifting columns of grey smoke, anchored at the top of the wall
+  // where merlons and bricks have been blown out. Non-additive grey so it
+  // reads as dust/smoke and doesn't fight the activated brazier glow.
+  if (dCrit > 0.20) {
+    const nWisps = 2 + Math.floor(dCrit * 3);
+    for (let i = 0; i < nWisps; i++) {
+      const sx0   = wallLeftX + wallW * (0.18 + rand(6100 + i) * 0.64);
+      const drift = Math.sin(T * 0.5 + i + id) * 4;
+      const climb = ((T * 0.22 + rand(6110 + i)) % 1);
+      const sy0   = wallTop - climb * bodyH * 0.95;
+      const sr    = bh * (0.22 + 0.08 * i + climb * 0.22);
+      const a     = (0.26 - i * 0.04) * (1 - climb * 0.80) * (0.6 + dCrit * 0.4);
+      if (a > 0.01) {
+        ctx.fillStyle = `rgba(110,110,110,${a})`;
+        ctx.beginPath();
+        ctx.ellipse(sx0 + drift, sy0, sr, sr * 0.62, 0, 0, TAU);
+        ctx.fill();
+      }
+    }
   }
 
   ctx.restore(); // end dormant-alpha wrap

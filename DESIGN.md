@@ -50,28 +50,35 @@ from `(seed, botA, botB)`. That is what makes "measure win rate over 200 games" 
 
 ```
 DESIGN.md
+HANDOFF.md              # state-of-the-work doc
 package.json            # type:module; npm run arena / npm run serve
 index.html              # browser viewer
+viewer.html             # standalone asset/sprite viewer
 src/
   rng.js                # mulberry32 seeded PRNG
   config.js             # arena, timing, elixir, tower constants
-  cards.js              # the 8 card definitions + spawn logic
+  cards.js              # the 8 card definitions + spawn / spell logic
   state.js              # initial state factory, deck shuffling, tower layout
   engine.js             # step(state, actions): the whole simulation tick
   view.js               # builds the read-only scene graph handed to a bot
   match.js              # headless + interactive match drivers
+  analysis.js           # summarize / diagnose / aggregate / formatGameReport
   renderer.js           # cheap canvas 2D drawing
+  sprites.js            # per-card draw routines for the viewer
+  background.js         # arena background (pre-baked + lazy load)
+  arena-geom.js         # arena tile↔pixel helpers shared by renderer & sprites
   registry.js           # list of selectable bots for the viewer
   main.js               # viewer wiring: dropdowns, play/pause/speed
+  viewer.js             # asset/sprite viewer wiring (viewer.html)
 bots/
   lib.js                # helper functions bots may import (dist, nearest…)
-  idle.js               # baseline: does nothing
-  random.js             # baseline: random legal plays (seeded by tick)
-  rush.js               # simple one-lane aggression
-  defender.js           # reactive defense + counter-push
-  example.js            # heavily commented template for the agent
+  Claude_Opus_4_7.js    # the only bot in the repo (see bot file header
+                        # for strategy + measured-dead-end notes)
 tools/
-  arena.js              # node tools/arena.js <botA> <botB> [games]
+  arena.js              # node tools/arena.js <botA> <botB> [games] [seed]
+  analyze.js            # one-game report or aggregated --series report
+  bake-bg.js            # offline arena-background pre-bake
+  bg-scene.js           # shared background scene description
 ```
 
 ---
@@ -181,19 +188,38 @@ ignore any of it. Shape (see `src/view.js` for the authoritative builder):
 
 ```js
 {
-  tick, time, timeRemaining, phase: 'normal'|'overtime', doubleElixir: bool,
-  arena: { width, height, mid, river:[lo,hi], bridges:[x1,x2] },
-  self:  {
+  tick, time, timeRemaining,
+  phase:        'normal' | 'overtime' | 'ended',
+  elixirMult:   1 | 2 | 3,         // 1× regular / 2× last min / 3× overtime
+  doubleElixir: bool,              // back-compat: elixirMult >= 2
+  crowns:       { self, enemy },   // enemy crown towers I've destroyed / opp's
+  arena:        { width, height, mid, river:[lo,hi], bridges:[x1,x2] },
+  self: {
     id, elixir, elixirMax,
-    hand: [{ card, cost, kind }, x4],
-    next: { card, cost, kind },
-    deck: [cardName x8],
-    deployZone: { minX, maxX, minY, maxY },   // legal troop placement rect
+    hand:       [{ card, cost, kind } x4],
+    next:       { card, cost, kind },
+    deck:       [cardName x8],
+    deployZone: { minX, maxX, minY, maxY },     // legal troop placement rect
   },
-  enemy: { id, elixir, hand:[...], next:{...}, deck:[...] },   // visible too
-  towers: [{ id, owner, kind:'king'|'princess', side, x, y, hp, maxHp, alive, activated }],
-  units:  [{ id, owner, card, x, y, hp, maxHp, flying, range, speed, deploying, targetId }],
-  cards:  { Knight:{...defs}, ... },          // static stats for planning
+  enemy:        { id, elixir, hand:[...], next:{...}, deck:[...] },
+  towers: [{
+    id, name, owner, mine, kind:'king'|'princess', side,
+    x, y, hp, maxHp, alive, activated,
+  }],
+  units: [{
+    id, name, owner, mine, card,
+    x, y, hp, maxHp, flying,
+    range, speed, dmg,                          // static def stats lifted up
+    deploying,                                  // true while the 1.0s timer is running
+    targetId,                                   // current aggro lock, or null
+    building,                                   // true for Cannon (no movement)
+    lifetime, maxLifetime,                      // building self-destruct timer
+  }],
+  projectiles: [{                               // in-flight arrows / bullets / spells
+    id, owner, mine, kind:'bolt'|'spell', card,
+    x, y, targetId, tx, ty,                     // bolt → targetId; spell → fixed (tx,ty)
+  }],
+  cards: { Knight:{...defs}, ... },             // static stats for planning
 }
 ```
 
@@ -214,59 +240,64 @@ as "do nothing this tick", so a buggy script just plays badly instead of crashin
 
 ## 8. The agent iteration loop
 
-This is the whole purpose of the project. Three CLI tools drive it:
+This is the whole purpose of the project. Two CLI tools drive it:
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Arena | `node tools/arena.js A B [games]` | Fast win rate, A vs B (no logging). |
-| Analyze | `node tools/analyze.js A B [seed]`<br>`node tools/analyze.js A B --series N` | Full event log + per-player efficiency + a plain-language *why-it-lost* diagnosis for one game, or aggregated over a series. |
-| Self-play | `node tools/selfplay.js <challenger> [games] [--promote]` | Challenger vs the reigning `bots/champion.js`. Prints win rate + an aggregate diagnosis of how the challenger played + one concrete loss. `--promote` overwrites the champion **iff** the challenger clears the bar (≥55% win **and** ≥50% decided). |
-| Trace | `node tools/trace.js A B [seed]` | One fully-instrumented game → `traces/A-vs-B-seed<n>.{txt,jsonl}`. Every card play (with spawned unit IDs) and **every combat hit**: attacker→victim, damage, tile, hp delta, death. Stable IDs `<Card>_<A\|B>_<n>` (A=P0, B=P1). Verbose `trace` mode is opt-in and never touches the sim or the live viewer. |
+| Arena   | `node tools/arena.js A B [games=100] [seed=1]` | Fast win rate, A vs B (no logging). Sides are swapped every other game so neither bot keeps the deploy/elixir-tick advantage. |
+| Analyze | `node tools/analyze.js A B [seed=1]`<br>`node tools/analyze.js A B --series N` | Full event log + per-player efficiency + a plain-language *why-it-lost* diagnosis for one game, or aggregated stats + a sample loss report over a series. |
 
 Loop:
 
-1. Write / edit a bot in `bots/` (start from `bots/example.js`).
-2. `node tools/selfplay.js mybot 80` — measure vs champion and **read the diagnosis**
-   (elixir leaked, spell waste, failed plays, loss reasons, the sample loss report).
-3. Form a hypothesis from the log, change the strategy, repeat.
-4. `--promote` when it clears the bar; the champion advances and the ladder continues.
-5. `node tools/analyze.js mybot champion 7` to inspect a single game tick-by-tick;
-   `npm run serve` to watch it in the browser (`smart` and `champion` are registered).
+1. Edit the bot in `bots/Claude_Opus_4_7.js` (or copy it to a new filename to
+   benchmark against the incumbent).
+2. `node tools/arena.js mybot Claude_Opus_4_7 200` — measure the mirror over
+   200 games. Re-run with `[seed=201]`, `[seed=401]` etc. for disjoint seed
+   bands; 200-game runs have ~3.5pp noise so a single band can mislead.
+3. `node tools/analyze.js mybot Claude_Opus_4_7 --series 50` — read the
+   aggregate diagnosis (elixir leaked, spell waste, failed plays, loss
+   reasons, the sample loss report) and form a hypothesis.
+4. Change one thing, re-measure. Keep changes that clear the noise floor on
+   multiple seed bands; revert ones that don't. The bot file header is the
+   place to document both the kept levers and the measured dead-ends so the
+   next iteration doesn't blindly re-explore them.
+5. `npm run serve` to watch a match in the browser (`Claude_Opus_4_7` is the
+   sole registered bot, used by both sides by default → a mirror).
 
 ### 8.1 Worked example (this is real, reproducible output)
 
-The seed champion was `defender` (the strongest hand-written bot, ~84% vs `rush`).
-A challenger `smart` was then iterated **from the logs**:
+`Claude_Opus_4_7` was iterated from the prior in-repo champion. The agent
+tried each lever in isolation against the prior champion over 600+ games and
+kept only ones that landed above 50% on multiple disjoint seed bands; the
+losers were documented in the bot file header so the next pass doesn't
+re-explore them.
 
-```
-v1  Giant beatdown + value spells .......... 70% vs defender  -> PROMOTED champion
-v2  + heavy "closing" gates ............... 50% (over-defended, 48 draws)   reject
-v3  v1 aggression + legal-deploy fix ....... 60%  W23 L15 D42  (best variant)
-v4  + spell-chip while Giant crossed ....... 60% (dead path: Giant rarely crosses)
-v5  + lane-avoid + back-fed support ........ 50% (51 draws)                  reject
-v6  fast-cycle chip archetype .............. 50% (71 draws)                  reject
-```
+Six small structural changes survived:
 
-`smart` (v3) beats the original `defender` **86.7% (22-0-8, 100% of decided games)**
-— a large, measured improvement the loop produced and locked in. Note the loop also
-*correctly rejected* v2/v5/v6 regressions: the promotion gate is what keeps win-rate
-gains real. The remaining draws are an equal-vs-equal mirror artifact (both bots defend
-optimally); breaking it needs a deeper push-timing model or a wider opponent pool —
-the harness is built for exactly that next step.
+1. Forward proactive Cannon at `(W/2, mid-1.5)` — locks the opp Giant on deploy.
+2. Arrows-before-Fireball for swarm clears whose max-HP unit fits in Arrows.dmg.
+3. Closer support stagger (`giant.y - 1.5` vs `-2.5`).
+4. Lower raid threshold (`E≥6` vs `E≥7`).
+5. Behind-on-crowns Giant gate (`E≥7` vs `E≥8`).
+6. Lower Knight (`E≥6`) / Goblins (`E≥7`) gates for the second-wave support behind a live Giant.
 
-Because matches are reproducible, a regression in win rate is a real signal, not noise,
-and every promotion is backed by logged evidence.
+Result: **53.1% / 2000 games** vs the prior champion across 10 disjoint seed
+bands, p < 0.01 binomial. Stays at 64–68% against the prior-prior generation,
+so the new levers don't trade away the existing dominance over weaker bots.
+
+Because matches are reproducible, a regression in win rate is a real signal,
+not noise, and every kept lever has logged evidence in the bot file header.
 
 ---
 
 ## 9. Determinism contract
 
 - Single seeded PRNG (`mulberry32`) lives on the state; used only for deck shuffles and the
-  (rare) tie-break. Combat/movement are fully deterministic.
+  (rare) tower-HP-tiebreak. Combat/movement are fully deterministic.
 - Fixed timestep; no `Date.now()` / `Math.random()` anywhere in the engine.
 - Therefore `(seed, botA, botB)` ⇒ identical match every time, in browser or Node.
-- Sample bots avoid `Math.random()` (the `random` bot is seeded from the tick) so the whole
-  pipeline stays reproducible.
+- Bots must not call `Math.random()` either; if you need pseudo-randomness, derive it
+  from `view.tick` or a hash of the game state so the whole pipeline stays reproducible.
 
 ## 10. Possible extensions (post-v1)
 
