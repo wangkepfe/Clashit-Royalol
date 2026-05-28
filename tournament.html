@@ -89,13 +89,13 @@ body {
 }
 
 /* ----- Board ----- */
-.board { position: relative; max-width: 1600px; margin: 0 auto; padding: 0 40px; }
+.board { position: relative; max-width: none; margin: 0 auto; padding: 0 80px; }
 
 /* Two-column layout: bracket area left, finals sidebar right */
-.main-layout { display: flex; gap: 36px; align-items: flex-start; }
+.main-layout { display: flex; gap: 64px; align-items: flex-start; }
 .bracket-area { flex: 1; min-width: 0; }
 .finals-sidebar {
-  width: 420px; flex-shrink: 0;
+  width: 520px; flex-shrink: 0;
   display: flex; flex-direction: column;
 }
 
@@ -103,12 +103,12 @@ body {
   display: flex; align-items: center; justify-content: center; gap: 16px;
   margin: 10px 0 8px;
 }
-.sec .seg { flex: 1; max-width: 380px; height: 1px;
+.sec .seg { flex: 1; max-width: none; height: 1px;
             background: linear-gradient(90deg, transparent, var(--line2), transparent); }
 .sec .label {
   font: 800 11px/1 ui-monospace, Menlo, Consolas, monospace;
   letter-spacing: 6px; color: var(--gold);
-  padding: 10px 20px;
+  padding: 10px 32px;
   border: 1px solid rgba(255,209,102,.28);
   border-radius: 4px;
   background:
@@ -120,7 +120,7 @@ body {
 .sec .label::after  { content: " ◆"; opacity: .6; }
 
 /* ----- Rounds grid ----- */
-.rounds { display: grid; gap: 20px; }
+.rounds { display: grid; gap: 36px; }
 .rounds.ub { grid-template-columns: 1fr 1fr 1fr;     min-height: 0; }
 .rounds.lb { grid-template-columns: 1fr 1fr 1fr 1fr; min-height: 0; }
 
@@ -135,7 +135,7 @@ body {
 }
 .round-title .fmt { color: var(--gold); opacity: .75; margin-left: 8px; font-size: 9px; }
 .round .matches { flex: 1; display: flex; flex-direction: column;
-                  justify-content: space-around; gap: 10px; }
+                  justify-content: space-around; gap: 18px; }
 
 /* ----- Match card ----- */
 .match {
@@ -155,7 +155,7 @@ body {
 
 .match .meta {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 5px 14px;
+  padding: 7px 22px;
   background: rgba(0,0,0,.30);
   border-bottom: 1px solid var(--line);
   font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace;
@@ -166,9 +166,9 @@ body {
 
 /* Match row */
 .row {
-  display: grid; grid-template-columns: 42px 1fr 46px;
-  align-items: center; gap: 12px;
-  padding: 9px 14px 9px 16px;
+  display: grid; grid-template-columns: 56px 1fr 60px;
+  align-items: center; gap: 18px;
+  padding: 12px 22px 12px 24px;
   position: relative;
 }
 .row + .row { border-top: 1px solid var(--line); }
@@ -260,7 +260,7 @@ body {
 .champ-wrap { margin-top: 14px; display: flex; justify-content: center; }
 .champ {
   position: relative;
-  padding: 14px 24px; min-width: 0; width: 100%; text-align: center;
+  padding: 16px 32px; min-width: 0; width: 100%; text-align: center;
   background: linear-gradient(180deg, rgba(255,209,102,.10), rgba(255,209,102,.02));
   border: 1px solid rgba(255,209,102,.4);
   border-radius: 12px;
