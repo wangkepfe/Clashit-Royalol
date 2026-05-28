@@ -64,6 +64,8 @@ class AudioEngine {
     this._launchFrameStamp = 0;
     this._deathsThisFrame = 0;
     this._deathFrameStamp = 0;
+
+    this._spawnBuffers = {};  // card → { buffer, gain } after async load
   }
 
   ensureReady() {
@@ -130,6 +132,7 @@ class AudioEngine {
       this.noiseBuffer = this._makeNoiseBuffer(2.0);
 
       this._setupBgmElement();
+      this._loadSpawnSamples();
     })();
     return this._readyPromise;
   }
@@ -411,6 +414,39 @@ class AudioEngine {
                   delay: 0.04, release: 0.05, dest });
   }
 
+  // cannon and goblin are TP-ceiling-limited after normalization; compensate
+  // with a small linear gain so they sit even with the -14 LUFS samples.
+  async _loadSpawnSamples() {
+    const SAMPLES = {
+      Knight:    { file: 'assets/audio/spawn/knight-spawn.mp3',    gain: 1.00 },
+      Giant:     { file: 'assets/audio/spawn/giant-spawn.mp3',     gain: 1.00 },
+      Archers:   { file: 'assets/audio/spawn/archer-spawn.mp3',    gain: 1.00 },
+      Musketeer: { file: 'assets/audio/spawn/musketeer-spawn.mp3', gain: 1.00 },
+      Goblins:   { file: 'assets/audio/spawn/goblin-spawn.mp3',    gain: 1.35 },
+      Cannon:    { file: 'assets/audio/spawn/cannon-spawn.mp3',    gain: 1.58 },
+    };
+    for (const [card, { file, gain }] of Object.entries(SAMPLES)) {
+      try {
+        const resp = await fetch(file);
+        const ab = await resp.arrayBuffer();
+        const buf = await this.ctx.decodeAudioData(ab);
+        this._spawnBuffers[card] = { buffer: buf, gain };
+      } catch (_) { /* missing file → synth fallback */ }
+    }
+  }
+
+  _playSpawnSample({ buffer, gain }, owner) {
+    const dest = this._bus('voice');
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = this._ownerMul(owner);
+    const g = this.ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(dest);
+    src.start(this.ctx.currentTime);
+  }
+
   cardDeploy(owner, card) {
     const def = CARDS[card];
     const kind = def ? def.kind : 'troop';
@@ -426,8 +462,13 @@ class AudioEngine {
       this._beep({ type: 'triangle', freq: 220 * m, freqEnd: 330 * m, dur: 0.1,
                    peak: 0.16, release: 0.07, delay: 0.005, dest });
     }
-    const voice = VOICES[card];
-    if (voice) voice.call(this, owner);
+    const sample = this._spawnBuffers[card];
+    if (sample) {
+      this._playSpawnSample(sample, owner);
+    } else {
+      const voice = VOICES[card];
+      if (voice) voice.call(this, owner);
+    }
   }
 
   // ────────────────────────── footsteps ──────────────────────────

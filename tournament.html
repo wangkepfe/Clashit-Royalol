@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tournament · Bot Royale</title>
+<style>
+:root {
+  --bg:        #0a1019;
+  --bg2:       #0d141d;
+  --panel:     #161f2b;
+  --panel2:    #1a2532;
+  --line:      #2a3a4b;
+  --line2:     #3a4d63;
+  --p-blue:    #46b1ff;
+  --p-red:     #ff6b66;
+  --txt:       #eef4fa;
+  --mut:       #8499ad;
+  --elix:      #c46be8;
+  --gold:      #ffd166;
+  --gold-deep: #c89a3a;
+  --shadow:    0 6px 22px rgba(0,0,0,.55);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--txt);
+             font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 900px 500px at 20% -5%, rgba(70,177,255,.10), transparent 65%),
+    radial-gradient(ellipse 900px 500px at 80% 105%, rgba(255,107,102,.10), transparent 65%),
+    radial-gradient(ellipse 1200px 600px at 50% 50%, rgba(255,209,102,.025), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* ----- Header ----- */
+.head { text-align: center; padding: 12px 20px 8px; position: relative; }
+.head .crown {
+  font-size: 28px; line-height: 1; margin-bottom: 4px;
+  filter: drop-shadow(0 0 24px rgba(255,209,102,.55));
+  background: linear-gradient(180deg, #ffe5a3 0%, var(--gold) 50%, var(--gold-deep) 100%);
+  -webkit-background-clip: text;  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.head h1 {
+  font: 800 22px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 7px;
+  background: linear-gradient(180deg, #ffe5a3 0%, var(--gold) 38%, var(--gold-deep) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 36px rgba(255,209,102,.25);
+  margin-bottom: 4px; outline: none;
+  cursor: text;
+}
+.head .sub {
+  color: var(--mut); font-size: 13px; letter-spacing: 5px;
+  text-transform: uppercase; outline: none; cursor: text;
+}
+.head .deco {
+  display: inline-flex; align-items: center; gap: 16px;
+  margin-top: 8px; color: var(--gold);
+  font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 5px; text-transform: uppercase;
+}
+.head .deco .seg {
+  width: 90px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: .75;
+}
+.head .deco .gem {
+  width: 6px; height: 6px; transform: rotate(45deg);
+  background: var(--gold); box-shadow: 0 0 12px var(--gold);
+}
+
+.hint {
+  text-align: center; font-size: 11px; color: var(--mut);
+  margin: 14px 0 24px; letter-spacing: 1.2px;
+}
+.hint kbd {
+  background: var(--panel); border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 3px;
+  padding: 1px 6px; font-size: 10px; color: var(--txt);
+  margin: 0 2px;
+}
+
+/* ----- Board ----- */
+.board { position: relative; max-width: 1600px; margin: 0 auto; padding: 0 40px; }
+
+/* Two-column layout: bracket area left, finals sidebar right */
+.main-layout { display: flex; gap: 36px; align-items: flex-start; }
+.bracket-area { flex: 1; min-width: 0; }
+.finals-sidebar {
+  width: 420px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+}
+
+.sec {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin: 10px 0 8px;
+}
+.sec .seg { flex: 1; max-width: 380px; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--line2), transparent); }
+.sec .label {
+  font: 800 11px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 6px; color: var(--gold);
+  padding: 10px 20px;
+  border: 1px solid rgba(255,209,102,.28);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(255,209,102,.06), rgba(255,209,102,.02));
+  text-transform: uppercase; white-space: nowrap;
+  box-shadow: 0 0 22px rgba(255,209,102,.08);
+}
+.sec .label::before { content: "◆ "; opacity: .6; }
+.sec .label::after  { content: " ◆"; opacity: .6; }
+
+/* ----- Rounds grid ----- */
+.rounds { display: grid; gap: 20px; }
+.rounds.ub { grid-template-columns: 1fr 1fr 1fr;     min-height: 0; }
+.rounds.lb { grid-template-columns: 1fr 1fr 1fr 1fr; min-height: 0; }
+
+.round { display: flex; flex-direction: column; }
+.round-title {
+  font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 3px; color: var(--mut);
+  text-transform: uppercase; text-align: center;
+  padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.round-title .fmt { color: var(--gold); opacity: .75; margin-left: 8px; font-size: 9px; }
+.round .matches { flex: 1; display: flex; flex-direction: column;
+                  justify-content: space-around; gap: 10px; }
+
+/* ----- Match card ----- */
+.match {
+  position: relative;
+  background: linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.04);
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.match:hover {
+  transform: translateY(-2px);
+  border-color: var(--line2);
+  box-shadow: 0 14px 32px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.match .meta {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 14px;
+  background: rgba(0,0,0,.30);
+  border-bottom: 1px solid var(--line);
+  font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace;
+  color: var(--mut); letter-spacing: 1.5px; text-transform: uppercase;
+}
+.match .meta .id  { color: var(--gold); }
+.match .meta .fmt { opacity: .85; }
+
+/* Match row */
+.row {
+  display: grid; grid-template-columns: 42px 1fr 46px;
+  align-items: center; gap: 12px;
+  padding: 9px 14px 9px 16px;
+  position: relative;
+}
+.row + .row { border-top: 1px solid var(--line); }
+
+.row .seed {
+  font: 700 9px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: .5px; color: var(--mut);
+  text-align: center;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line); border-radius: 3px;
+  padding: 4px 0; outline: none;
+}
+.row .seed:focus { background: rgba(255,255,255,.10); color: var(--txt); border-color: var(--line2); }
+
+.row .name {
+  font-weight: 700; font-size: 12px; color: var(--txt);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  outline: none; padding: 3px 6px; border-radius: 4px;
+  transition: background .15s;
+}
+.row .name:hover, .row .name:focus { background: rgba(255,255,255,.06); }
+
+.row .score {
+  text-align: center; font-weight: 800; font-size: 17px;
+  color: var(--mut); outline: none;
+  border-radius: 4px; padding: 2px 0;
+  transition: background .15s;
+}
+.row .score:hover, .row .score:focus { background: rgba(255,255,255,.06); }
+
+/* Side accent: blue/red king strip */
+.row.blue { background: linear-gradient(90deg, rgba(70,177,255,.12), transparent 72%); }
+.row.red  { background: linear-gradient(90deg, rgba(255,107,102,.12), transparent 72%); }
+.row.blue::before, .row.red::before {
+  content: ""; position: absolute; left: 0; top: 10%; bottom: 10%;
+  width: 3px; border-radius: 2px;
+}
+.row.blue::before { background: var(--p-blue); box-shadow: 0 0 10px rgba(70,177,255,.65); }
+.row.red::before  { background: var(--p-red);  box-shadow: 0 0 10px rgba(255,107,102,.65); }
+.row.blue .score { color: var(--p-blue); }
+.row.red  .score { color: var(--p-red); }
+
+/* Winner / loser */
+.row.win.blue { background: linear-gradient(90deg, rgba(70,177,255,.22), rgba(70,177,255,.03) 75%); }
+.row.win.red  { background: linear-gradient(90deg, rgba(255,107,102,.22), rgba(255,107,102,.03) 75%); }
+.row.win .name { font-weight: 800; }
+.row.win .name::after {
+  content: " ♛"; color: var(--gold); font-size: 11px; margin-left: 4px;
+  text-shadow: 0 0 8px rgba(255,209,102,.6);
+}
+.row.win::after {
+  content: ""; position: absolute; right: 0; top: 8%; bottom: 8%;
+  width: 3px; border-radius: 2px;
+  background: var(--gold); box-shadow: 0 0 12px var(--gold);
+}
+.row.lose { opacity: .42; filter: saturate(.35); }
+.row.lose .name { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.30); }
+
+/* ----- Grand Final ----- */
+.grand-wrap {
+  margin-top: 0;
+  display: flex; flex-direction: column;
+  gap: 16px;
+}
+.grand-wrap .col { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.grand-wrap .match { width: auto; }
+.grand-wrap .arrow { display: none; }
+.grand-wrap .match.gf {
+  border: 2px solid var(--gold);
+  background: linear-gradient(180deg, rgba(255,209,102,.10), var(--panel) 70%);
+  box-shadow: 0 0 34px rgba(255,209,102,.30), var(--shadow);
+}
+.grand-wrap .match.gf .meta { background: rgba(255,209,102,.18); color: var(--gold); }
+.grand-wrap .match.reset {
+  border-style: dashed;
+  background: linear-gradient(180deg, var(--panel2), var(--panel) 70%);
+}
+.grand-wrap .arrow {
+  color: var(--gold); font-size: 24px; align-self: center;
+  filter: drop-shadow(0 0 10px var(--gold));
+}
+.grand-wrap .note {
+  font-size: 9px; color: var(--mut);
+  letter-spacing: 2px; text-transform: uppercase;
+  text-align: center; max-width: 320px;
+}
+
+/* ----- Champion card ----- */
+.champ-wrap { margin-top: 14px; display: flex; justify-content: center; }
+.champ {
+  position: relative;
+  padding: 14px 24px; min-width: 0; width: 100%; text-align: center;
+  background: linear-gradient(180deg, rgba(255,209,102,.10), rgba(255,209,102,.02));
+  border: 1px solid rgba(255,209,102,.4);
+  border-radius: 12px;
+  box-shadow: 0 0 50px rgba(255,209,102,.18), var(--shadow);
+}
+.champ .label {
+  font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 5px; color: var(--gold); margin-bottom: 10px;
+  text-transform: uppercase;
+}
+.champ .crown { font-size: 22px; line-height: 1;
+                filter: drop-shadow(0 0 16px var(--gold)); }
+.champ .name {
+  display: inline-block;
+  font: 800 18px/1.1 ui-monospace, Menlo, Consolas, monospace;
+  color: var(--txt); letter-spacing: 2px;
+  margin-top: 10px; outline: none; padding: 4px 10px; border-radius: 5px;
+  transition: background .15s;
+}
+.champ .name:hover, .champ .name:focus { background: rgba(255,255,255,.06); }
+
+/* ----- Legend ----- */
+.legend {
+  display: flex; gap: 20px; justify-content: center; align-items: center;
+  flex-wrap: wrap;
+  margin: 10px auto 0; padding: 10px 24px;
+  border-top: 1px solid var(--line);
+  max-width: 980px;
+  font-size: 11px; color: var(--mut);
+  letter-spacing: 1.5px; text-transform: uppercase;
+}
+.legend .item { display: flex; align-items: center; gap: 8px; }
+.legend .sw { width: 14px; height: 14px; border-radius: 3px; }
+.legend .sw.blue { background: var(--p-blue); box-shadow: 0 0 10px var(--p-blue); }
+.legend .sw.red  { background: var(--p-red);  box-shadow: 0 0 10px var(--p-red);  }
+.legend .sw.gold { background: var(--gold);   box-shadow: 0 0 10px var(--gold); }
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .match { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="crown">♛</div>
+  <h1 contenteditable="true" spellcheck="false">BOT ROYALE TOURNAMENT</h1>
+  <div class="sub" contenteditable="true" spellcheck="false">World Finals · Season I · 2026</div>
+  <div class="deco"><span class="seg"></span><span class="gem"></span>Double Elimination · 8 Players<span class="gem"></span><span class="seg"></span></div>
+</div>
+
+<div class="board">
+  <div class="main-layout">
+
+    <!-- ===== LEFT: BRACKET AREA ===== -->
+    <div class="bracket-area">
+
+      <!-- UPPER BRACKET -->
+      <div class="sec"><span class="seg"></span><span class="label">Upper Bracket</span><span class="seg"></span></div>
+      <div class="rounds ub">
+        <div class="round" data-round="ub-qf">
+          <div class="round-title">Quarterfinals <span class="fmt">BO3</span></div>
+          <div class="matches"></div>
+        </div>
+        <div class="round" data-round="ub-sf">
+          <div class="round-title">Semifinals <span class="fmt">BO3</span></div>
+          <div class="matches"></div>
+        </div>
+        <div class="round" data-round="ub-f">
+          <div class="round-title">Upper Final <span class="fmt">BO5</span></div>
+          <div class="matches"></div>
+        </div>
+      </div>
+
+      <!-- LOWER BRACKET -->
+      <div class="sec"><span class="seg"></span><span class="label">Lower Bracket</span><span class="seg"></span></div>
+      <div class="rounds lb">
+        <div class="round" data-round="lb-r1">
+          <div class="round-title">LB Round 1 <span class="fmt">BO3</span></div>
+          <div class="matches"></div>
+        </div>
+        <div class="round" data-round="lb-r2">
+          <div class="round-title">LB Round 2 <span class="fmt">BO3</span></div>
+          <div class="matches"></div>
+        </div>
+        <div class="round" data-round="lb-sf">
+          <div class="round-title">LB Semifinal <span class="fmt">BO3</span></div>
+          <div class="matches"></div>
+        </div>
+        <div class="round" data-round="lb-f">
+          <div class="round-title">LB Final <span class="fmt">BO5</span></div>
+          <div class="matches"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===== RIGHT: FINALS SIDEBAR ===== -->
+    <div class="finals-sidebar">
+      <div class="sec"><span class="seg"></span><span class="label">Grand Final</span><span class="seg"></span></div>
+      <div class="grand-wrap" id="grand"></div>
+
+      <div class="champ-wrap">
+        <div class="champ">
+          <div class="crown">♛</div>
+          <div class="label">Champion</div>
+          <div class="name" contenteditable="true" spellcheck="false" data-id="CHAMPION">— TBD —</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="item"><span class="sw blue"></span>Blue King</div>
+    <div class="item"><span class="sw red"></span>Red King</div>
+    <div class="item"><span class="sw gold"></span>Round Winner</div>
+  </div>
+
+</div>
+
+<script>
+/* ----- Bracket data ----- */
+/* id: match identifier shown in meta bar
+   round: bucket key (matches the .round[data-round])
+   fmt: best-of label
+   blue/red: { seed, name, score }
+   winner: 'blue' | 'red' | ''
+*/
+const initial = [
+  // Upper Bracket — Quarterfinals
+  { id: 'UB · QF1', round: 'ub-qf', fmt: 'BO3',
+    blue: { seed:'#1', name:'Claude_4.7',     score:'—' },
+    red:  { seed:'#8', name:'GPT_5',          score:'—' }, winner:'' },
+  { id: 'UB · QF2', round: 'ub-qf', fmt: 'BO3',
+    blue: { seed:'#4', name:'Kimi_K2',        score:'—' },
+    red:  { seed:'#5', name:'Gemini_3',       score:'—' }, winner:'' },
+  { id: 'UB · QF3', round: 'ub-qf', fmt: 'BO3',
+    blue: { seed:'#3', name:'DeepSeek_Pro',   score:'—' },
+    red:  { seed:'#6', name:'Claude_4.6',     score:'—' }, winner:'' },
+  { id: 'UB · QF4', round: 'ub-qf', fmt: 'BO3',
+    blue: { seed:'#2', name:'Nemotron',       score:'—' },
+    red:  { seed:'#7', name:'DeepSeek_Flash', score:'—' }, winner:'' },
+
+  // Upper Bracket — Semifinals
+  { id: 'UB · SF1', round: 'ub-sf', fmt: 'BO3',
+    blue: { seed:'W·QF1', name:'TBD', score:'—' },
+    red:  { seed:'W·QF2', name:'TBD', score:'—' }, winner:'' },
+  { id: 'UB · SF2', round: 'ub-sf', fmt: 'BO3',
+    blue: { seed:'W·QF3', name:'TBD', score:'—' },
+    red:  { seed:'W·QF4', name:'TBD', score:'—' }, winner:'' },
+
+  // Upper Final
+  { id: 'UB · Final', round: 'ub-f', fmt: 'BO5',
+    blue: { seed:'W·SF1', name:'TBD', score:'—' },
+    red:  { seed:'W·SF2', name:'TBD', score:'—' }, winner:'' },
+
+  // Lower Bracket — Round 1 (UB QF losers)
+  { id: 'LB · R1.1', round: 'lb-r1', fmt: 'BO3',
+    blue: { seed:'L·QF1', name:'TBD', score:'—' },
+    red:  { seed:'L·QF2', name:'TBD', score:'—' }, winner:'' },
+  { id: 'LB · R1.2', round: 'lb-r1', fmt: 'BO3',
+    blue: { seed:'L·QF3', name:'TBD', score:'—' },
+    red:  { seed:'L·QF4', name:'TBD', score:'—' }, winner:'' },
+
+  // Lower Bracket — Round 2 (LB R1 winners vs UB SF losers)
+  { id: 'LB · R2.1', round: 'lb-r2', fmt: 'BO3',
+    blue: { seed:'W·R1.1', name:'TBD', score:'—' },
+    red:  { seed:'L·SF2',  name:'TBD', score:'—' }, winner:'' },
+  { id: 'LB · R2.2', round: 'lb-r2', fmt: 'BO3',
+    blue: { seed:'W·R1.2', name:'TBD', score:'—' },
+    red:  { seed:'L·SF1',  name:'TBD', score:'—' }, winner:'' },
+
+  // Lower Semifinal
+  { id: 'LB · Semi', round: 'lb-sf', fmt: 'BO3',
+    blue: { seed:'W·R2.1', name:'TBD', score:'—' },
+    red:  { seed:'W·R2.2', name:'TBD', score:'—' }, winner:'' },
+
+  // Lower Final (LB Semi winner vs UB Final loser)
+  { id: 'LB · Final', round: 'lb-f', fmt: 'BO5',
+    blue: { seed:'L·UBF',  name:'TBD', score:'—' },
+    red:  { seed:'W·LSF',  name:'TBD', score:'—' }, winner:'' },
+];
+
+const grandMatches = [
+  { id: 'Grand Final', kind: 'gf', fmt: 'BO5',
+    blue: { seed:'UB', name:'[UB Champion]', score:'—' },
+    red:  { seed:'LB', name:'[LB Champion]', score:'—' }, winner:'' },
+  { id: 'Bracket Reset', kind: 'reset', fmt: 'BO5',
+    blue: { seed:'UB', name:'[UB Champion]', score:'—' },
+    red:  { seed:'LB', name:'[LB Champion]', score:'—' }, winner:'' },
+];
+
+/* ----- Render ----- */
+function matchHTML(m, opts = {}) {
+  const winB = m.winner === 'blue' ? 'win' : (m.winner ? 'lose' : '');
+  const winR = m.winner === 'red'  ? 'win' : (m.winner ? 'lose' : '');
+  const liveCls = m.live ? ' live' : '';
+  const extraCls = opts.extraCls || '';
+  return `
+    <div class="match${liveCls} ${extraCls}" data-id="${m.id}">
+      <div class="meta"><span class="id">${m.id}</span><span class="fmt">${m.fmt}</span></div>
+      <div class="row blue ${winB}">
+        <div class="seed"  contenteditable="true" spellcheck="false">${m.blue.seed}</div>
+        <div class="name"  contenteditable="true" spellcheck="false">${m.blue.name}</div>
+        <div class="score" contenteditable="true" spellcheck="false">${m.blue.score}</div>
+      </div>
+      <div class="row red ${winR}">
+        <div class="seed"  contenteditable="true" spellcheck="false">${m.red.seed}</div>
+        <div class="name"  contenteditable="true" spellcheck="false">${m.red.name}</div>
+        <div class="score" contenteditable="true" spellcheck="false">${m.red.score}</div>
+      </div>
+    </div>`;
+}
+
+initial.forEach(m => {
+  const slot = document.querySelector(`.round[data-round="${m.round}"] .matches`);
+  if (slot) slot.insertAdjacentHTML('beforeend', matchHTML(m));
+});
+
+const grand = document.getElementById('grand');
+grand.innerHTML = `
+  <div class="col">
+    ${matchHTML(grandMatches[1], { extraCls: 'gf reset' })}
+    <div class="note">Bracket Reset · played only if LB wins Grand Final</div>
+  </div>
+  <div class="arrow">←</div>
+  <div class="col">
+    ${matchHTML(grandMatches[0], { extraCls: 'gf' })}
+    <div class="note">UB Champion advances directly to Grand Final</div>
+  </div>`;
+
+/* ----- Persistence ----- */
+const STORAGE_KEY = 'br-tournament-v2';
+
+function fieldKey(el) {
+  if (el.dataset.id === 'CHAMPION') return 'CHAMPION';
+  if (el.tagName === 'H1') return 'head.title';
+  if (el.classList.contains('sub') && el.parentElement.classList.contains('head')) return 'head.sub';
+  const card = el.closest('.match');
+  if (!card) return null;
+  const id = card.dataset.id;
+  const row = el.closest('.row');
+  if (!row) return null;
+  const side = row.classList.contains('blue') ? 'b' : 'r';
+  const field = el.classList.contains('seed')  ? 'seed'
+              : el.classList.contains('name')  ? 'name'
+              : el.classList.contains('score') ? 'score' : null;
+  if (!field) return null;
+  return `${id}|${side}.${field}`;
+}
+
+function winnerKey(card) { return `${card.dataset.id}|winner`; }
+
+function saveAll() {
+  const data = { fields: {}, winners: {} };
+  document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+    const k = fieldKey(el);
+    if (k) data.fields[k] = el.innerText;
+  });
+  document.querySelectorAll('.match').forEach(card => {
+    const blueWin = card.querySelector('.row.blue').classList.contains('win');
+    const redWin  = card.querySelector('.row.red').classList.contains('win');
+    data.winners[winnerKey(card)] = blueWin ? 'blue' : redWin ? 'red' : '';
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function loadAll() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  let data; try { data = JSON.parse(raw); } catch { return; }
+  if (data.fields) {
+    document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+      const k = fieldKey(el);
+      if (k && data.fields[k] !== undefined) el.innerText = data.fields[k];
+    });
+  }
+  if (data.winners) {
+    document.querySelectorAll('.match').forEach(card => {
+      const w = data.winners[winnerKey(card)];
+      applyWinner(card, w);
+    });
+  }
+}
+
+function applyWinner(card, who /* 'blue'|'red'|'' */) {
+  const b = card.querySelector('.row.blue');
+  const r = card.querySelector('.row.red');
+  b.classList.remove('win', 'lose');
+  r.classList.remove('win', 'lose');
+  if (who === 'blue') { b.classList.add('win'); r.classList.add('lose'); }
+  else if (who === 'red') { r.classList.add('win'); b.classList.add('lose'); }
+}
+
+loadAll();
+
+/* ----- Editing handlers ----- */
+document.addEventListener('input', e => {
+  if (e.target.matches('[contenteditable="true"]')) saveAll();
+});
+
+// Keep editable fields single-line
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('[contenteditable="true"]')) {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+
+// Strip pasted HTML to plain text
+document.addEventListener('paste', e => {
+  if (!e.target.matches('[contenteditable="true"]')) return;
+  e.preventDefault();
+  const txt = (e.clipboardData || window.clipboardData).getData('text');
+  document.execCommand('insertText', false, txt.replace(/\r?\n/g, ' '));
+});
+
+// Double-click on a row toggles its winner
+document.addEventListener('dblclick', e => {
+  const row = e.target.closest('.row');
+  if (!row) return;
+  // don't fire when the user is double-clicking inside an editable field to select
+  if (e.target.matches('[contenteditable="true"]')) return;
+  const card = row.closest('.match');
+  if (!card) return;
+  const isWinner = row.classList.contains('win');
+  const side = row.classList.contains('blue') ? 'blue' : 'red';
+  applyWinner(card, isWinner ? '' : side);
+  saveAll();
+});
+</script>
+</body>
+</html>
